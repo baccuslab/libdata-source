@@ -1,0 +1,10 @@
+*.swp
+*.o
+*.dylib
+*.so
+moc_*
+*.qrc
+*.stash
+Makefile*
+debug/*
+release/*
