@@ -12,7 +12,8 @@
 
 FileSource::FileSource(const QString& filename, QObject *parent) :
 	BaseSource("file", "none", qSNaN(), 10, parent),
-	m_filename(filename)
+	m_filename(filename),
+	m_currentSample(0)
 {
 	if (!QFile::exists(m_filename)) {
 		throw std::invalid_argument("The requested data file does not exist.");
@@ -72,83 +73,56 @@ void FileSource::getSourceInfo()
 	}
 }
 
-void FileSource::deleteSourceInfo()
-{
-	m_sampleRate = qSNaN();
-	m_frameSize = 0;
-	m_gain = qSNaN();
-	m_nchannels = 0;
-	m_adcRange = qSNaN();
-	m_analogOutput = {};
-	if (m_deviceType.startsWith("hidens")) {
-		m_plug = -1;
-		m_chipId = -1;
-		auto* p = dynamic_cast<hidensfile::HidensFile*>(m_datafile.get());
-		if (!p) {
-			return;
-		}
-		m_configuration = QConfiguration{};
-	}
-}
-
 void FileSource::set(QString param, QVariant /* value */)
 {
 	emit setResponse(param, false, "Cannot set parameters of a file data source.");
 }
 
-void FileSource::connect()
+void FileSource::initialize()
 {
-	bool success = checkStateTransition("disconnected", "connected");
+	bool success;
 	QString msg;
-	if (success) {
+	if (m_state == "invalid") {
+		m_state = "initialized";
+		success = true;
 		m_connectTime = QDateTime::currentDateTime();
-		m_state = "connected";
 		getSourceInfo();
 	} else {
-		msg = "Can only connect from 'disconnected' state.";
+		msg = "Can only initialize from the 'invalid' state.";
+		success = false;
 	}
-	emit connected(success, msg);
-}
-
-void FileSource::disconnect() { 
-	bool success = checkStateTransition("connected", "disconnected");
-	QString msg;
-	if (success) {
-		m_connectTime = QDateTime{};
-		m_state = "disconnected";
-		m_trigger = "none";
-		deleteSourceInfo();
-	} else {
-		msg = "Can only disconnect from 'connected' state.";
-	}
-	emit disconnected(success, msg);
+	emit initialized(success, msg);
 }
 
 void FileSource::startStream()
 {
-	bool success = checkStateTransition("connected", "streaming");
+	bool success;
 	QString msg;
-	if (success) {
-		m_readTimer->start();
+	if (m_state == "initialized") {
 		m_state = "streaming";
 		m_startTime = QDateTime::currentDateTime();
+		m_readTimer->start();
+		success = true;
 	} else {
-		msg = "Can only start stream from 'connected' state.";
+		msg = "Can only start stream from 'initialized' state.";
+		success = false;
 	}
 	emit streamStarted(success, msg);
 }
 
 void FileSource::stopStream()
 {
-	bool success = checkStateTransition("streaming", "connected");
+	bool success;
 	QString msg;
-	if (success) {
+	if (m_state == "streaming") {
 		m_readTimer->stop();
-		m_state = "connected";
+		m_state = "initialized";
 		m_startTime = {};
 		m_currentSample = 0;
+		success = true;
 	} else {
 		msg = "Can only stop stream from 'streaming' state.";
+		success = false;
 	}
 	emit streamStopped(success, msg);
 }
@@ -160,7 +134,7 @@ void FileSource::readDataFromFile()
 		/* Wrap data around to the beginning of the file. */
 		m_currentSample = 0;
 		m_readTimer->stop();
-		m_state = "connected";
+		m_state = "initialized";
 		emit streamStopped(true, "Reached end of source data file.");
 		return;
 	}
@@ -169,14 +143,15 @@ void FileSource::readDataFromFile()
 	emit dataAvailable(s);
 }
 
-QJsonObject FileSource::packStatus()
+QVariantMap FileSource::packStatus()
 {
-	auto json = BaseSource::packStatus();
+	auto map = BaseSource::packStatus();
 	if (m_datafile->array().find("hidens") != std::string::npos) {
-		json.insert("configuration", configToJson(m_configuration));
-		json.insert("plug", static_cast<qint64>(m_plug));
+		map.insert("configuration", configToJson(m_configuration));
+		map.insert("plug", m_plug);
 	} else {
-		json.insert("trigger", m_trigger);
+		map.insert("trigger", m_trigger);
 	}
-	return json;
+	return map;
 }
+

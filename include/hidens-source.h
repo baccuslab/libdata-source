@@ -48,18 +48,11 @@ class HidensSource : public BaseSource {
 		 */
 		virtual void set(QString param, QVariant value) Q_DECL_OVERRIDE;
 
-		/*! Method implementing requests to connect to the Hidens data source.
+		/*! Method implementing requests to initialize the Hidens data source.
 		 *
-		 * See BaseSource::connect() for details.
+		 * See BaseSource::initialize() for details.
 		 */
-		virtual void connect() Q_DECL_OVERRIDE;
-
-		/*! Method implementing requests to disconnect from the 
-		 * Hidens data source.
-		 *
-		 * See BaseSource::disconnect() for details.
-		 */
-		virtual void disconnect() Q_DECL_OVERRIDE;
+		virtual void initialize() Q_DECL_OVERRIDE;
 
 		/*! Method implementing requests to start the Hidens data stream.
 		 *
@@ -114,8 +107,8 @@ class HidensSource : public BaseSource {
 		static QPair<bool, QString> sendConfigToFpga(
 				QString file, QString addr, quint16 port);
 
-		/*! Override of function for packing source status into JSON */
-		virtual QJsonObject packStatus() Q_DECL_OVERRIDE;
+		/*! Override of function for packing source status into a map */
+		virtual QVariantMap packStatus() Q_DECL_OVERRIDE;
 
 		/* The future representing the result of the above
 		 * concurrent function.

@@ -46,82 +46,57 @@ HidensSource::~HidensSource()
 	m_socket->deleteLater();
 }
 
-void HidensSource::connect()
+void HidensSource::initialize()
 {
-	bool valid = checkStateTransition("disconnected", "connected");
-	if (!valid) {
-		emit connected(false, "Can only connect from 'disconnected' state.");
-	} else {
+	if (m_state == "invalid") {
 		QObject::connect(m_socket, &QAbstractSocket::connected,
 				this, [&] { handleConnectionMade(true); });
 		QObject::connect(m_socket, 
 				static_cast<void(QAbstractSocket::*)(QAbstractSocket::SocketError)>(&QAbstractSocket::error),
 				this, [&] { handleConnectionMade(false); });
 		m_socket->connectToHost(m_addr, m_port);
-	}
-}
-
-void HidensSource::disconnect()
-{
-	bool valid = checkStateTransition("connected", "disconnected");
-	QString msg;
-	if (valid) {
-		QObject::disconnect(m_socket, 0, 0, 0);
-		m_state = "disconnected";
-		m_socket->disconnectFromHost();
-
-		/* Clear values */
-		m_plug = -1;
-		m_chipId = -1;
-		m_configurationFile.clear();
-		m_configuration.clear();
-		m_nchannels = 0;
-
 	} else {
-		msg = "Can only disconnect from 'connected' state.";
+		emit initialized(false, "Can only initialize from 'invalid' state.");
 	}
-	emit disconnected(valid, msg);
 }
 
 void HidensSource::startStream()
 {
-	bool valid = checkStateTransition("connected", "streaming");
+	bool valid = false;
 	QString msg;
-	if (valid) {
+	if (m_state == "initialized") {
 		if (m_plug > 4) {
-			emit streamStarted(false, 
-					QString("Cannot initialize HiDens source with plug = %1").arg(
-					m_plug));
-			return;
+			valid = false;
+			msg = QString("Cannot start HiDens data stream with source plug = %1").arg(m_plug);
 		}
 		if (m_configuration.size() == 0) {
-			emit streamStarted(false, "Cannot initialize HiDens source with empty configuration.");
-			return;
+			valid = false;
+			msg = "Cannot initialize HiDens source with empty configuration.";
 		}
 		if (std::isnan(m_gain) || 
 				( (m_gain < 0.) || (m_gain > 10000.) )) {
-			emit streamStarted(false, 
-					QString("Cannot initialize HiDens source with gain = %1").arg(
-					m_gain));
-			return;
+			valid = false;
+			msg = QString("Cannot initialize HiDens source with gain = %1").arg(m_gain);
 		}
 		m_state = "streaming";
 		requestData("live");
 		m_readTimer->start();
-
+		valid = true;
 	} else {
 		msg = "Can only start stream from the 'connected' state.";
+		valid = false;
 	}
 	emit streamStarted(valid, msg);
 }
 
 void HidensSource::stopStream()
 {
-	bool valid = checkStateTransition("streaming", "connected");
+	bool valid = false;
 	QString msg;
-	if (valid) {
-		m_state = "connected";
+	if (m_state == "streaming") {
+		m_state = "initialized";
 		m_readTimer->stop(); // should probably flush remaining data
+		valid = true;
 	} else {
 		msg = "Can only stop stream from the 'streaming' state.";
 	}
@@ -136,9 +111,9 @@ void HidensSource::set(QString param, QVariant value)
 		return;
 	}
 
-	if (m_state != "connected") {
+	if (m_state != "initialized") {
 		emit setResponse(param, false, 
-				"Can only set parameters while in the 'connected' state.");
+				"Can only set parameters while in the 'initialized' state.");
 		return;
 	}
 
@@ -222,7 +197,7 @@ void HidensSource::handleConnectionMade(bool made)
 		if (!verifyReply(getHidensReply())) {
 			m_socket->disconnectFromHost();
 			qDebug() << "Could not setbytes with HiDens server.";
-			emit connected(false, "Error initializing communication with HiDens data server.");
+			emit initialized(false, "Error initializing communication with HiDens data server.");
 			return;
 		}
 
@@ -230,7 +205,7 @@ void HidensSource::handleConnectionMade(bool made)
 		if (!verifyReply(getHidensReply())) {
 			m_socket->disconnectFromHost();
 			qDebug() << "Could not set header_frameno off with HiDens server.";
-			emit connected(false, "Error initializing communication with HiDens data server.");
+			emit initialized(false, "Error initializing communication with HiDens data server.");
 			return;
 		}
 
@@ -238,7 +213,7 @@ void HidensSource::handleConnectionMade(bool made)
 		if (!verifyReply(getHidensReply())) {
 			m_socket->disconnectFromHost();
 			qDebug() << "Could not set client name with HiDens server.";
-			emit connected(false, "Error initializing communication with HiDens data server.");
+			emit initialized(false, "Error initializing communication with HiDens data server.");
 			return;
 		}
 
@@ -248,8 +223,10 @@ void HidensSource::handleConnectionMade(bool made)
 		m_sampleRate = reply.toFloat(&ok);
 		if (!ok) {
 			m_socket->disconnectFromHost();
-			qDebug() << "Could not retrieve sampling rate from HiDens server.";
-			emit connected(false, "Error initializing communication with HiDens data server.");
+			QString msg { "Could not retrieve sampling rate from HiDens server. "
+					"Make sure the server is running and a chip is plugged into the Neurolizer." };
+			qDebug().noquote() << msg;
+			emit initialized(false, msg);
 			return;
 		}
 
@@ -258,8 +235,10 @@ void HidensSource::handleConnectionMade(bool made)
 		auto gain = reply.toFloat(&ok);
 		if (!ok) {
 			m_socket->disconnectFromHost();
-			qDebug() << "Could not retrieve gain from HiDens server.";
-			emit connected(false, "Error initializing communication with HiDens data server.");
+			QString msg { "Could not retrieve gain from HiDens server. "
+					"Make sure the server is running and a chip is plugged into the Neurolizer." };
+			qDebug().noquote() << msg;
+			emit initialized(false, msg);
 			return;
 		}
 		m_deviceGain = gain;
@@ -269,8 +248,10 @@ void HidensSource::handleConnectionMade(bool made)
 		auto adcRange = reply.toFloat(&ok);
 		if (!ok) {
 			m_socket->disconnectFromHost();
-			qDebug() << "Could not retrieve ADC range from HiDens server.";
-			emit connected(false, "Error initializing communication with HiDens data server.");
+			QString msg { "Could not retrieve ADC range from HiDens server. "
+					"Make sure the server is running and a chip is plugged into the Neurolizer." };
+			qDebug().noquote() << msg;
+			emit initialized(false, msg);
 			return;
 		}
 		m_adcRange = adcRange;
@@ -279,15 +260,15 @@ void HidensSource::handleConnectionMade(bool made)
 		QObject::connect(m_socket, &QAbstractSocket::disconnected,
 				this, &HidensSource::handleDisconnect);
 
-		m_state = "connected";
+		m_state = "initialized";
 		m_connectTime = QDateTime::currentDateTime();
-		emit connected(true);
+		emit initialized(true);
 
 	} else {
 		qDebug() << "Could not connect to HiDens data server.";
 		m_socket->disconnectFromHost();
 		m_connectTime = QDateTime{};
-		emit connected(false, "Could not connect to HiDens data server.");
+		emit initialized(false, "Could not connect to HiDens data server.");
 	}
 }
 
@@ -509,11 +490,11 @@ void HidensSource::handleError(const QString& msg)
 	BaseSource::handleError(msg);
 }
 
-QJsonObject HidensSource::packStatus() 
+QVariantMap HidensSource::packStatus() 
 {
-	auto json = BaseSource::packStatus();
-	json.insert("configuration", configToJson(m_configuration));
-	json.insert("plug", static_cast<qint64>(m_plug));
-	return json;
+	auto map = BaseSource::packStatus();
+	map.insert("configuration", configToVariant(m_configuration));
+	map.insert("plug", m_plug);
+	return map;
 }
 

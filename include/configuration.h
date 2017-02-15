@@ -88,6 +88,11 @@ struct Electrode {
 					static_cast<qint64>(label),
 			};
 		}
+
+		/*! Encode an electrode into a QVariant */
+		QVariant toVariant() const {
+			return QVariant::fromValue<Electrode>(*this);
+		}
 };
 
 /*! A Qt-based configuration */
@@ -103,6 +108,11 @@ inline QJsonArray configToJson(const QConfiguration& c) {
 		config.append(el.toJson());
 	}
 	return config;
+}
+
+/*! Encode a QConfiguration as a QVector<Electrode> into a QVariant */
+inline QVariant configToVariant(const QConfiguration& c) {
+	return QVariant::fromValue<QConfiguration>(c);
 }
 
 /*! Print to a QDebug stream */

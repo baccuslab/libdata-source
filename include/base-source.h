@@ -6,18 +6,9 @@
  *
  * The BaseSource class is designed to (but need not) live in a separate thread
  * from the main class managing it. As such, all state changes, parameter
- * changes, queries, etc. are to be done in a request-reply pattern. Client
- * code emits a request to connect to the underlying data source, the class
- * checks if it can be done, does it if it's possible, and then emits a 
- * signal indicating that the connection happened.
- *
- * The base class defines this interface for requests/replies, and implements
- * the basic mechanism for checking state transitions by ensuring that 
- * the correct source and destination states are specified. That is, the
- * base class enforces that client code can only start the device's stream
- * from the connected state, for example. Subclasses should override this
- * to enforce more specific requirements, for example, that certain parameters
- * have been set before the transition is allowed.
+ * changes, queries, etc. are to be done in a request-reply pattern. For example,
+ * client code emits a request to set a parameter of the data source, and
+ * receives a response to indicate whether the request succeeded.
  *
  * (C) 2016 Benjamin Naecker bnaecker@stanford.edu
  */
@@ -54,10 +45,9 @@ class BaseSource : public QObject {
 				QString deviceType = "none", float sampleRate = qSNaN(), 
 				int readInterval = 10, QObject *parent = Q_NULLPTR) :
 			QObject(parent), 
-			m_state("disconnected"),
+			m_state("invalid"),
 			m_sourceType(sourceType),
 			m_deviceType(deviceType),
-			m_connectTime(QDateTime{}),
 			m_startTime(QDateTime{}),
 			m_configuration({}),
 			m_readInterval(readInterval),
@@ -74,7 +64,6 @@ class BaseSource : public QObject {
 		{ 
 			qRegisterMetaType<Samples>();
 			m_gettableParameters = {
-						"connect-time",
 						"start-time",
 						"state",
 						"nchannels",
@@ -110,50 +99,23 @@ class BaseSource : public QObject {
 
 	public slots:
 
-		/*! Connect to the device.
-		 * The base class implementation checks that the state transition is valid,
-		 * and emits the connected() signal with information about whether the connection
-		 * succeeded.
-		 *
-		 * Subclasses should override this to implement the behavior desired to
-		 * initialize a connection with the underlying data source.
+		/*! Perform any initialization setup needed before the source
+		 * may be used by client code.
 		 */
-		virtual void connect() {
-			bool success = checkStateTransition("disconnected", "connected");
+		virtual void initialize() {
+			bool success;
 			QString msg;
-			if (success) {
-				m_connectTime = QDateTime::currentDateTime();
-				m_state = "connected";
+			if (m_state == "invalid") {
+				m_state = "initialized";
+				success = true;
 			} else {
-				msg = "Can only connect from 'disconnected' state.";
+				success = false;
+				msg = "Can only 'initialize' from 'invalid' state.";
 			}
-			emit connected(success, msg);
-		}
-
-		/*! Disconnect from the device.
-		 * The base class implementation checks that the state transition is valid,
-		 * and emits the disconnected() signal with information about whether the 
-		 * disconnection succeeded.
-		 *
-		 * Subclasses should override this to implement the behavior desired to
-		 * destroy a connection to the underlying data source.
-		 */
-		virtual void disconnect() { 
-			bool success = checkStateTransition("connected", "disconnected");
-			QString msg;
-			if (success) {
-				m_connectTime = QDateTime{};
-				m_state = "disconnected";
-			} else {
-				msg = "Can only disconnect from 'connected' state.";
-			}
-			emit disconnected(success, msg);
+			emit initialized(true, msg);
 		}
 
 		/*! Start the data stream associated with the source.
-		 * The base class implementation checks that the state transition is valid,
-		 * and emits the streamStarted() signal with information about whether starting
-		 * the stream succeeded.
 		 *
 		 * Subclasses should override this to implement the behavior desired to
 		 * actually start the data stream for the source. If successful, this should
@@ -161,20 +123,19 @@ class BaseSource : public QObject {
 		 * becomes available.
 		 */
 		virtual void startStream() { 
-			bool success = checkStateTransition("connected", "streaming");
+			bool success;
 			QString msg;
-			if (success) {
+			if (m_state == "initialized") {
 				m_state = "streaming";
+				success = true;
 			} else {
-				msg = "Can only start stream from 'connected' state.";
+				success = false;
+				msg = "Can only start stream from the 'initialized' state.";
 			}
 			emit streamStarted(success, msg);
 		}
 
 		/*! Stop the data stream associated with the source.
-		 * The base class implementation checks that the state transition is valid,
-		 * and emits the streamStopped() signal with information about whether stopping
-		 * the stream succeeded.
 		 *
 		 * Subclasses should override this to implement the behavior desired to
 		 * actually stop the data stream for the source. If successful, this should
@@ -182,12 +143,14 @@ class BaseSource : public QObject {
 		 * data becomes available.
 		 */
 		virtual void stopStream() { 
-			bool success = checkStateTransition("streaming", "connected");
+			bool success;
 			QString msg;
-			if (success) {
-				m_state = "connected";
+			if (m_state == "streaming") {
+				m_state = "initialized";
+				success = true;
 			} else {
-				msg = "Can only stop stream from 'streaming' state.";
+				success = false;
+				msg = "Can only stop stream from the 'streaming' state.";
 			}
 			emit streamStopped(success, msg);
 		}
@@ -215,51 +178,140 @@ class BaseSource : public QObject {
 		virtual void get(QString param) { 
 			bool valid = true;
 			QVariant data;
-			if (!m_gettableParameters.contains(param)) {
-				emit getResponse(param, false, 
-						QString("The parameter \"%1\" is not valid "
-						"for source %2").arg(param).arg(metaObject()->className()));
-				return;
-			}
 
-			if (param == "trigger") {
-				data = m_trigger;
-			} else if (param == "connect-time") {
-				data = m_connectTime.toString();
-			} else if (param == "start-time") {
-				data = m_startTime.toString();
-			} else if (param == "state") {
-				data = m_state;
-			} else if (param == "nchannels") {
-				data = m_nchannels;
-			} else if (param == "analog-output") {
-				data = QVariant::fromValue<QVector<double>>(m_analogOutput);
-			} else if (param == "has-analog-output") {
-				data = m_analogOutput.size() > 0;
-			} else if (param == "gain") {
-				data = m_gain;
-			} else if (param == "adc-range") {
-				data = m_adcRange;
-			} else if (param == "plug") {
-				data = m_plug;
-			} else if (param == "chip-id") {
-				data = m_chipId;
-			} else if (param == "read-interval") {
-				data = m_readInterval;
-			} else if (param == "sample-rate") {
-				data = m_sampleRate;
-			} else if (param == "source-type") {
-				data = m_sourceType;
-			} else if (param == "device-type") {
-				data = m_deviceType;
-			} else if (param == "configuration") {
-				data = QVariant::fromValue<QConfiguration>(m_configuration);
-			} else {
+			if (m_state == "invalid") {
 				valid = false;
-				data = QString("No parameter named \"%1\" exists for the %2 device").
-						arg(param).arg(m_deviceType);
+				data = QString("Can only get parameters in either "
+						"'initialized' or 'streaming' state.");
+			} else {
+				if (!m_gettableParameters.contains(param)) {
+					emit getResponse(param, false, 
+							QString("The parameter \"%1\" is not valid "
+							"for source %2").arg(param).arg(metaObject()->className()));
+					return;
+				}
+				if (param == "trigger") {
+					data = m_trigger;
+				} else if (param == "connect-time") {
+					data = m_connectTime.toString();
+				} else if (param == "start-time") {
+					data = m_startTime.toString();
+				} else if (param == "state") {
+					data = m_state;
+				} else if (param == "nchannels") {
+					data = m_nchannels;
+				} else if (param == "analog-output") {
+					data = QVariant::fromValue<QVector<double>>(m_analogOutput);
+				} else if (param == "has-analog-output") {
+					data = m_analogOutput.size() > 0;
+				} else if (param == "gain") {
+					data = m_gain;
+				} else if (param == "adc-range") {
+					data = m_adcRange;
+				} else if (param == "plug") {
+					data = m_plug;
+				} else if (param == "chip-id") {
+					data = m_chipId;
+				} else if (param == "read-interval") {
+					data = m_readInterval;
+				} else if (param == "sample-rate") {
+					data = m_sampleRate;
+				} else if (param == "source-type") {
+					data = m_sourceType;
+				} else if (param == "device-type") {
+					data = m_deviceType;
+				} else if (param == "configuration") {
+					data = QVariant::fromValue<QConfiguration>(m_configuration);
+				} else {
+					valid = false;
+					data = QString("No parameter named \"%1\" exists for the %2 device").
+							arg(param).arg(m_deviceType);
+				}
 			}
 			emit getResponse(param, valid, data);
+		}
+
+		/*! Serialize a parameter to raw bytes, suitable for being
+		 * sent over the wire.
+		 */
+		static QByteArray serialize(const QString& param, const QVariant& value) {
+			QByteArray buffer;
+			if ( (param == "trigger") ||
+					(param == "connect-time") ||
+					(param == "start-time") ||
+					(param == "source-type") ||
+					(param == "device-type") ||
+					(param == "state") ){
+				buffer = value.toByteArray();
+			} else if ( (param == "nchannels") ||
+					(param == "plug") ||
+					(param == "chip-id") ||
+					(param == "read-interval") ){
+				quint32 x = value.toUInt();
+				buffer.resize(sizeof(x));
+				std::memcpy(buffer.data(), &x, sizeof(x));
+			} else if (param == "analog-output") {
+				auto aout = value.value<QVector<double>>();
+				quint32 size = aout.size();
+				buffer.resize(sizeof(size) + sizeof(double) * size);
+				std::memcpy(buffer.data(), &size, sizeof(size));
+				std::memcpy(buffer.data() + sizeof(size), aout.data(), size * sizeof(double));
+			} else if ( (param == "gain") ||
+					(param == "adc-range") ||
+					(param == "sample-rate") ){
+				float x = value.toFloat();
+				buffer.resize(sizeof(x));
+				std::memcpy(buffer.data(), &x, sizeof(x));
+			} else if (param == "configuration") {
+				auto config = value.value<QConfiguration>();
+				quint32 size = config.size();
+				buffer.resize(sizeof(size) + size * sizeof(Electrode));
+				std::memcpy(buffer.data(), &size, sizeof(size));
+				std::memcpy(buffer.data() + sizeof(size), config.data(), 
+						size * sizeof(Electrode));
+			}
+			return buffer;
+		}
+
+		/*! Deserialize a parameter from a byte representation to a variant. */
+		static QVariant deserialize(const QString& param, const QByteArray& buffer) {
+			QVariant data;
+			if ( (param == "trigger") ||
+					(param == "connect-time") ||
+					(param == "start-time") ||
+					(param == "source-type") ||
+					(param == "device-type") ||
+					(param == "state") ){
+				data = buffer;
+			} else if ( (param == "nchannels") ||
+					(param == "plug") ||
+					(param == "chip-id") ||
+					(param == "read-interval") ){
+				quint32 x = 0;
+				std::memcpy(&x, buffer.data(), sizeof(x));
+				data = x;
+			} else if (param == "analog-output") {
+				quint32 size = 0;
+				std::memcpy(&size, buffer.data(), sizeof(size));
+				QVector<double> aout(size);
+				std::memcpy(aout.data(), buffer.data() + sizeof(size), 
+						size * sizeof(double));
+				data = QVariant::fromValue<decltype(aout)>(aout);
+			} else if ( (param == "gain") ||
+					(param == "adc-range") ||
+					(param == "sample-rate") ){
+				float x = 0.0;
+				std::memcpy(&x, buffer.data(), sizeof(x));
+				data = x;
+			} else if (param == "configuration") {
+				quint32 size = 0;
+				std::memcpy(&size, buffer.data(), sizeof(size));
+				QConfiguration config(size);
+				std::memcpy(config.data(), buffer.data() + sizeof(size),
+						size * sizeof(Electrode));
+				data = QVariant::fromValue<decltype(config)>(config);
+			}
+			return data;
 		}
 
 		/*! Pack the source's status information into a JSON object and emit
@@ -287,17 +339,12 @@ class BaseSource : public QObject {
 		 */
 		void getResponse(QString param, bool valid, QVariant data = QVariant());
 
-		/*! Emitted in response to a request to connect to the source.
+		/*! Emitted after the source has performed initialization needed and 
+		 * ready to be used by client code.
 		 * \param success True if the request succeeded.
 		 * \param msg If the request failed, this contains an error message explaining why.
 		 */
-		void connected(bool success, QString msg = QString());
-
-		/*! Emitted in response to a request to disconnect from the source.
-		 * \param success True if the request succeeded.
-		 * \param msg If the request failed, this contains an error message explaining why.
-		 */
-		void disconnected(bool success, QString msg = QString());
+		void initialized(bool success, QString msg = QString());
 
 		/*! Emitted in response to a request to start the source's data stream.
 		 * \param success True if the request succeeded.
@@ -312,9 +359,9 @@ class BaseSource : public QObject {
 		void streamStopped(bool success, QString msg = QString());
 
 		/*! Emitted in response to a request for the full status of the source.
-		 * \param status A JSON object containing the full status.
+		 * \param status A map containing the key-value pairs for parameters and values.
 		 */
-		void status(QJsonObject status);
+		void status(QVariantMap status);
 
 		/*! Emitted when new data is available from the source.
 		 * \param samples An Armadillo matrix containing the new data. This is shaped as
@@ -335,45 +382,19 @@ class BaseSource : public QObject {
 
 	protected:
 
-		virtual QJsonObject packStatus() {
-			return QJsonObject{
+		virtual QVariantMap packStatus() {
+			return {
 					{"state", m_state},
 					{"source-type", m_sourceType},
 					{"device-type", m_deviceType},
-					{"connect-time", m_connectTime.toString()},
 					{"start-time", m_startTime.toString()},
 					{"read-interval", m_readInterval},
 					{"sample-rate", m_sampleRate},
 					{"gain", m_gain},
 					{"adc-range", m_adcRange},
-					{"nchannels", static_cast<qint64>(m_nchannels)},
+					{"nchannels", m_nchannels},
 					{"has-analog-output", false}
 			};
-		}
-
-
-		/* Check a state transition.
-		 * \param from The source state from which the transition must originate.
-		 * \param to The source state in which the transition should end.
-		 *
-		 * This enforces the basic state diagram of data sources. Subclass
-		 * implementations of the various transition slots (e.g., connect()), 
-		 * should call this method before performing any other checking specific
-		 * to that subclass.
-		 */
-		virtual bool checkStateTransition(QString from, QString to) {
-			if (m_state != from) {
-				return false;
-			}
-			if (m_state == "disconnected") {
-				return (to == "connected");
-			} else if (m_state == "connected") { 
-				return ( (to == "disconnected") || (to == "streaming") );
-			} else if (m_state == "streaming") {
-				return (to == "connected");
-			} else {
-				return false;
-			}
 		}
 
 		/*! Deal with an error from the source.
@@ -389,8 +410,7 @@ class BaseSource : public QObject {
 		 */
 		virtual void handleError(const QString& message)
 		{
-			m_state = "disconnected";
-			m_connectTime = QDateTime{};
+			m_state = "invalid";
 			m_startTime = QDateTime{};
 			m_configuration = {};
 			m_gain = qSNaN();

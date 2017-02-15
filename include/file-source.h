@@ -29,8 +29,7 @@ class FileSource : public BaseSource {
 
 	public slots:
 		virtual void set(QString param, QVariant data) Q_DECL_OVERRIDE;
-		virtual void connect() Q_DECL_OVERRIDE;
-		virtual void disconnect() Q_DECL_OVERRIDE;
+		virtual void initialize() Q_DECL_OVERRIDE;
 		virtual void startStream() Q_DECL_OVERRIDE;
 		virtual void stopStream() Q_DECL_OVERRIDE;
 
@@ -39,8 +38,7 @@ class FileSource : public BaseSource {
 
 	private:
 		void getSourceInfo();
-		void deleteSourceInfo();
-		virtual QJsonObject packStatus() Q_DECL_OVERRIDE;
+		virtual QVariantMap packStatus() Q_DECL_OVERRIDE;
 
 		QString m_filename;
 		std::unique_ptr<datafile::DataFile> m_datafile;
