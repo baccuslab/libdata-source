@@ -10,6 +10,8 @@
 
 #include "libdatafile/include/hidensfile.h"
 
+namespace datasource {
+
 FileSource::FileSource(const QString& filename, QObject *parent) :
 	BaseSource("file", "none", qSNaN(), 10, parent),
 	m_filename(filename),
@@ -149,9 +151,15 @@ QVariantMap FileSource::packStatus()
 	if (m_datafile->array().find("hidens") != std::string::npos) {
 		map.insert("configuration", configToJson(m_configuration));
 		map.insert("plug", m_plug);
+		map.insert("chip-id", m_chipId);
 	} else {
 		map.insert("trigger", m_trigger);
+		map.insert("has-analog-output", m_analogOutput.size() > 0);
+		map.insert("analog-output", 
+				QVariant::fromValue<decltype(m_analogOutput)>(m_analogOutput));
 	}
 	return map;
 }
+
+}; // end datasource namespace
 

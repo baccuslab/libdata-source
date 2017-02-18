@@ -8,6 +8,8 @@
 
 #include "mcs-source.h"
 
+namespace datasource {
+	
 McsSource::McsSource(QObject *parent) :
 	BaseSource("device", "mcs", 10000., 10, parent)
 #ifndef Q_OS_WIN
@@ -37,3 +39,5 @@ McsSource::~McsSource()
 {
 }
 #endif
+
+}; // end datasource namespace

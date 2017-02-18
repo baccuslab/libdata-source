@@ -11,6 +11,8 @@
 #include <algorithm> 	// for std::for_each
 #include <cmath>		// std::isnan
 
+namespace datasource {
+
 HidensSource::HidensSource(const QString& addr, QObject *parent) :
 	BaseSource("device", "hidens", SampleRate, 10, parent),
 	m_addr(addr),
@@ -497,4 +499,6 @@ QVariantMap HidensSource::packStatus()
 	map.insert("plug", m_plug);
 	return map;
 }
+
+}; // end datasource namespace
 

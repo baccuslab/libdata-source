@@ -17,6 +17,8 @@
 
 #include <QtCore>
 
+namespace datasource {
+
 class McsSource : public BaseSource {
 	Q_OBJECT
 
@@ -79,5 +81,7 @@ class McsSource : public BaseSource {
 #endif // Q_OS_WIN
 
 };
+
+}; // end datasource namespace
 
 #endif

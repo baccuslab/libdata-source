@@ -14,6 +14,8 @@
 #include <QtNetwork>
 #include <QtConcurrent>
 
+namespace datasource {
+
 class HidensSource : public BaseSource {
 	Q_OBJECT
 
@@ -175,5 +177,7 @@ class HidensSource : public BaseSource {
 		/* Timer used to request new data and read it from the server */
 		QTimer* m_readTimer;
 };
+
+}; // end datasource namespace 
 
 #endif

@@ -46,7 +46,9 @@ HEADERS += include/configuration.h \
 		   include/base-source.h \
 		   include/hidens-source.h \
 		   include/mcs-source.h \
-		   include/file-source.h
+		   include/file-source.h \
+		   include/data-source.h
 SOURCES += src/hidens-source.cc \
 		   src/mcs-source.cc \
-		   src/file-source.cc
+		   src/file-source.cc \
+		   src/data-source.cc

@@ -21,9 +21,19 @@
 #include <armadillo>
 #include <QtCore>
 
-/*! Type alias for a single frame of data. */
+namespace datasource {
+/*! Type alias for a single frame of data.
+ * This is declared inside its own namespace because the
+ * Q_DECLARE_METATYPE macro must have the fully-qualified
+ * name, but that macro itself must appear in the global
+ * namespace.
+ */
 using Samples = arma::Mat<qint16>;
-Q_DECLARE_METATYPE(Samples);
+};
+
+Q_DECLARE_METATYPE(datasource::Samples);
+
+namespace datasource {
 
 class BaseSource : public QObject {
 	Q_OBJECT
@@ -41,9 +51,9 @@ class BaseSource : public QObject {
 		 * methods and computes any values based on them (e.g., the size of
 		 * a frame of data), but otherwise performs no initialization.
 		 */
-		BaseSource(QString sourceType = "none", 
-				QString deviceType = "none", float sampleRate = qSNaN(), 
-				int readInterval = 10, QObject *parent = Q_NULLPTR) :
+		BaseSource(QString sourceType = "none", QString deviceType = "none", 
+				float sampleRate = qSNaN(), int readInterval = 10, 
+				QObject *parent = Q_NULLPTR) :
 			QObject(parent), 
 			m_state("invalid"),
 			m_sourceType(sourceType),
@@ -231,89 +241,6 @@ class BaseSource : public QObject {
 			emit getResponse(param, valid, data);
 		}
 
-		/*! Serialize a parameter to raw bytes, suitable for being
-		 * sent over the wire.
-		 */
-		static QByteArray serialize(const QString& param, const QVariant& value) {
-			QByteArray buffer;
-			if ( (param == "trigger") ||
-					(param == "connect-time") ||
-					(param == "start-time") ||
-					(param == "source-type") ||
-					(param == "device-type") ||
-					(param == "state") ){
-				buffer = value.toByteArray();
-			} else if ( (param == "nchannels") ||
-					(param == "plug") ||
-					(param == "chip-id") ||
-					(param == "read-interval") ){
-				quint32 x = value.toUInt();
-				buffer.resize(sizeof(x));
-				std::memcpy(buffer.data(), &x, sizeof(x));
-			} else if (param == "analog-output") {
-				auto aout = value.value<QVector<double>>();
-				quint32 size = aout.size();
-				buffer.resize(sizeof(size) + sizeof(double) * size);
-				std::memcpy(buffer.data(), &size, sizeof(size));
-				std::memcpy(buffer.data() + sizeof(size), aout.data(), size * sizeof(double));
-			} else if ( (param == "gain") ||
-					(param == "adc-range") ||
-					(param == "sample-rate") ){
-				float x = value.toFloat();
-				buffer.resize(sizeof(x));
-				std::memcpy(buffer.data(), &x, sizeof(x));
-			} else if (param == "configuration") {
-				auto config = value.value<QConfiguration>();
-				quint32 size = config.size();
-				buffer.resize(sizeof(size) + size * sizeof(Electrode));
-				std::memcpy(buffer.data(), &size, sizeof(size));
-				std::memcpy(buffer.data() + sizeof(size), config.data(), 
-						size * sizeof(Electrode));
-			}
-			return buffer;
-		}
-
-		/*! Deserialize a parameter from a byte representation to a variant. */
-		static QVariant deserialize(const QString& param, const QByteArray& buffer) {
-			QVariant data;
-			if ( (param == "trigger") ||
-					(param == "connect-time") ||
-					(param == "start-time") ||
-					(param == "source-type") ||
-					(param == "device-type") ||
-					(param == "state") ){
-				data = buffer;
-			} else if ( (param == "nchannels") ||
-					(param == "plug") ||
-					(param == "chip-id") ||
-					(param == "read-interval") ){
-				quint32 x = 0;
-				std::memcpy(&x, buffer.data(), sizeof(x));
-				data = x;
-			} else if (param == "analog-output") {
-				quint32 size = 0;
-				std::memcpy(&size, buffer.data(), sizeof(size));
-				QVector<double> aout(size);
-				std::memcpy(aout.data(), buffer.data() + sizeof(size), 
-						size * sizeof(double));
-				data = QVariant::fromValue<decltype(aout)>(aout);
-			} else if ( (param == "gain") ||
-					(param == "adc-range") ||
-					(param == "sample-rate") ){
-				float x = 0.0;
-				std::memcpy(&x, buffer.data(), sizeof(x));
-				data = x;
-			} else if (param == "configuration") {
-				quint32 size = 0;
-				std::memcpy(&size, buffer.data(), sizeof(size));
-				QConfiguration config(size);
-				std::memcpy(config.data(), buffer.data() + sizeof(size),
-						size * sizeof(Electrode));
-				data = QVariant::fromValue<decltype(config)>(config);
-			}
-			return data;
-		}
-
 		/*! Pack the source's status information into a JSON object and emit
 		 * it as a signal. This should be done in response to requests for
 		 * the current status of the device.
@@ -323,6 +250,7 @@ class BaseSource : public QObject {
 		}
 
 	signals:
+
 		/*! Emitted in response to a request to set a parameter.
 		 * \param param The name of the parameter requested to be set.
 		 * \param success True if the parameter was successfully set, false otherwise.
@@ -332,15 +260,16 @@ class BaseSource : public QObject {
 
 		/*! Emitted in response to a request to get a parameter.
 		 * \param param The name of the parameter requested.
-		 * \param valid True if the parameter exists for this source and was successfully retrieved.
+		 * \param valid True if the parameter exists for this source and 
+		 * 	was successfully retrieved.
 		 * \param data If the get request succeeded, this contains the data corresponding
-		 * to the parameter. If the request failed, this contains an error message explaining
-		 * why the request failed.
+		 * 	to the parameter. If the request failed, this contains an error message explaining
+		 * 	why the request failed.
 		 */
 		void getResponse(QString param, bool valid, QVariant data = QVariant());
 
 		/*! Emitted after the source has performed initialization needed and 
-		 * ready to be used by client code.
+		 * 	ready to be used by client code.
 		 * \param success True if the request succeeded.
 		 * \param msg If the request failed, this contains an error message explaining why.
 		 */
@@ -491,5 +420,7 @@ class BaseSource : public QObject {
 		/* Set of parameters that can be set for this data source. */
 		QSet<QString> m_settableParameters;
 };
+
+}; // end datasource namespace
 
 #endif

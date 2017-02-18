@@ -16,6 +16,8 @@
 
 #include <memory> // std::unique_ptr
 
+namespace datasource {
+
 class FileSource : public BaseSource {
 	Q_OBJECT
 
@@ -46,4 +48,7 @@ class FileSource : public BaseSource {
 		quint64 m_currentSample;
 };
 
+}; // end datasource namespace
+
 #endif
+
