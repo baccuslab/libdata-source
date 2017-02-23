@@ -8,7 +8,7 @@ TARGET = data-source
 INCLUDEPATH += . \
 	include \
 	/usr/local/include \
-	../ \ recording-software directory
+	../
 
 MOC_DIR = build
 OBJECTS_DIR = build

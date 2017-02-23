@@ -1,0 +1,8 @@
+<!DOCTYPE RCC><RCC version="1.0">
+<qresource>
+	<file>electrode-list.txt</file>
+</qresource>
+<qresource>
+	<file>mcs-source.conf</file>
+</qresource>
+</RCC>
