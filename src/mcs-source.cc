@@ -10,8 +10,8 @@
 
 namespace datasource {
 	
-McsSource::McsSource(QObject *parent) :
-	BaseSource("device", "mcs", 10000., 10, parent)
+McsSource::McsSource(int readInterval, QObject *parent) :
+	BaseSource("device", "mcs", readInterval, 10000., parent)
 #ifndef Q_OS_WIN
 {
 }

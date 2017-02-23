@@ -19,11 +19,25 @@
 
 namespace datasource {
 
+/*! \class McsSource
+ * The McsSource manages data recorded from the Multichannel Systems arrays
+ * using the National Instruments NI-DAQmx driver library. This data source
+ * can only be used on Windows machines.
+ */
 class McsSource : public BaseSource {
 	Q_OBJECT
 
 	public:
-		McsSource(QObject *parent = nullptr);
+
+		/*! Construct an McsSource.
+		 *
+		 * \param readInterval The interval at which data is read from the source,
+		 * 	in milliseconds.
+		 * \param parent The parent QObject.
+		 */
+		McsSource(int readInterval = 10, QObject *parent = nullptr);
+
+		/*! Destroy an McsSource. */
 		~McsSource();
 
 		McsSource(const McsSource&) = delete;

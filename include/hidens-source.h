@@ -16,24 +16,56 @@
 
 namespace datasource {
 
+/*! \class HidensSource
+ *
+ * The HidensSource class is used to represent data collected from a
+ * Hidens MEA. In addition to all parameters defined by the BaseSource
+ * class, this subclass allows getting and setting the Hidens electrode
+ * configuration in several ways.
+ *
+ * Note that the current implementation is *blocking*. Despite the fact
+ * that the server program with which this class communicates is over the
+ * network, writing a non-blocking implementation of this isn't trivial
+ * because of a lot of variability in the replies from that server. So 
+ * this class imposes a blocing request/reply pattern on the communication
+ * protocol. So this BaseSource subclass *really should* be in a background
+ * thread.
+ */
 class HidensSource : public BaseSource {
 	Q_OBJECT
 
-	const QString HidensAddr { "11.0.0.1" }; 	// Default IP address
-	const quint16 HidensPort { 11112 };			// Default port 
-	const QString FpgaAddr { "11.0.0.7" };		// Default IP address for FPGA
-	const quint16 FpgaPort { 32124 };			// Default port for FPGA
-	const int RequestWaitTime { 100 };			// Time to block for reply from server
-	const int FpgaTimeout { 1000 };				// Time waiting for sending configs to FPGA
-	static constexpr float SampleRate { 20000. };			// Sampling rate of the data
+	/*! The IP address for the Hidens ThreadedServer application. */
+	const QString HidensAddr { "11.0.0.1" };
+
+	/*! Port number at which to connect to the Hidens ThreadedServer. */
+	const quint16 HidensPort { 11112 };
+
+	/*! IP address for the FPGA, used to send configurations and other
+	 * low-level driver commands to the Hidens chips.
+	 */
+	const QString FpgaAddr { "11.0.0.7" };
+
+	/*! Port number to which the FPGA commands are sent. */
+	const quint16 FpgaPort { 32124 };
+
+	/*! Default time to wait for replies from the Hidens server. */
+	const int RequestWaitTime { 100 };
+
+	/*! Timeout to wait for replies in sending commands directly to the FPGA. */
+	const int FpgaTimeout { 1000 };
+
+	/*! The sample rate of the device. */
+	static constexpr float SampleRate { 20000. };
 
 	public:
 		/*! Construct a HiDens data source.
 		 * \param addr The IP address or hostname at which the HiDens ThreadedServer
 		 * application is running.
+		 * \param readInterval The interval at which data is retrieved from the source.
 		 * \param parent Parent for this object.
 		 */
-		HidensSource(const QString& addr = "11.0.0.1", QObject *parent = nullptr);
+		HidensSource(const QString& addr = "11.0.0.1", int readInterval = 10, 
+				QObject *parent = nullptr);
 
 		/*! Destroy a Hidens data source. */
 		~HidensSource();
@@ -67,8 +99,6 @@ class HidensSource : public BaseSource {
 		 * See BaseSource::stopStream() for details.
 		 */
 		virtual void stopStream() Q_DECL_OVERRIDE;
-
-		//virtual void get(QString param) Q_DECL_OVERRIDE;
 
 	private:
 		/* Handle a connection attempt to the HiDens data server. */

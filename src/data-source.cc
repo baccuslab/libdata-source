@@ -9,18 +9,18 @@
 
 namespace datasource {
 
-BaseSource* create(const QString& type, const QString& location)
+BaseSource* create(const QString& type, const QString& location, int readInterval)
 {
 	if (type == "mcs") {
 #ifdef Q_OS_WIN
-		return new McsSource();
+		return new McsSource(readInterval);
 #else
 		throw std::invalid_argument("MCS sources can only be created on Windows machines.");
 #endif
 	} else if (type == "hidens") {
-		return new HidensSource(location);
+		return new HidensSource(location, readInterval);
 	} else if (type == "file") {
-		return new FileSource(location);
+		return new FileSource(location, readInterval);
 	} else {
 		throw std::invalid_argument("Unknown source type: " + type.toStdString());
 	}
@@ -34,7 +34,8 @@ QByteArray serialize(const QString& param, const QVariant& value)
 			(param == "start-time") ||
 			(param == "source-type") ||
 			(param == "device-type") ||
-			(param == "state") ){
+			(param == "state") ||
+			(param == "location") ){
 		/* String, serialized as UTF8 byte array. */
 		buffer = value.toByteArray();
 	} else if ( (param == "nchannels") ||
@@ -88,7 +89,8 @@ QVariant deserialize(const QString& param, const QByteArray& buffer)
 			(param == "start-time") ||
 			(param == "source-type") ||
 			(param == "device-type") ||
-			(param == "state") ){
+			(param == "state") ||
+			(param == "location") ){
 		data = buffer;
 	} else if ( (param == "nchannels") ||
 			(param == "plug") ||

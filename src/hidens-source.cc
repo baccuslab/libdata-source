@@ -13,8 +13,8 @@
 
 namespace datasource {
 
-HidensSource::HidensSource(const QString& addr, QObject *parent) :
-	BaseSource("device", "hidens", SampleRate, 10, parent),
+HidensSource::HidensSource(const QString& addr, int readInterval, QObject *parent) :
+	BaseSource("device", "hidens", readInterval, SampleRate, parent),
 	m_addr(addr),
 	m_port(HidensPort),
 	m_electrodeIndices(m_hidensFrameSize)
@@ -24,6 +24,7 @@ HidensSource::HidensSource(const QString& addr, QObject *parent) :
 	m_acqBuffer.set_size(m_hidensFrameSize, 
 			static_cast<int>(m_sampleRate * 
 			static_cast<float>(m_readInterval) / 1000.));
+	m_sourceLocation = addr;
 
 	m_socket = new QTcpSocket(this);
 
@@ -355,7 +356,7 @@ void HidensSource::recvDataFrame()
 				[](uchar& x) { 
 					x = ( x & 0x08 ) ? 255 : 0; // set elements with 4th bit a 1 to 255
 				});
-		emit dataAvailable(arma::conv_to<Samples>::from(
+		emit dataAvailable(arma::conv_to<datasource::Samples>::from(
 				m_acqBuffer.rows(m_channelIndices).t() * static_cast<qint16>(-1)));
 	};
 }
@@ -495,6 +496,7 @@ void HidensSource::handleError(const QString& msg)
 QVariantMap HidensSource::packStatus() 
 {
 	auto map = BaseSource::packStatus();
+	map.insert("location", m_sourceLocation);
 	map.insert("configuration", configToVariant(m_configuration));
 	map.insert("plug", m_plug);
 	return map;

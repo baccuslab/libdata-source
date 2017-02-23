@@ -22,6 +22,7 @@
 #include <QtCore>
 
 namespace datasource {
+	
 /*! Type alias for a single frame of data.
  * This is declared inside its own namespace because the
  * Q_DECLARE_METATYPE macro must have the fully-qualified
@@ -35,6 +36,23 @@ Q_DECLARE_METATYPE(datasource::Samples);
 
 namespace datasource {
 
+/*! \class BaseSource
+ * The BaseSource class is the base class for all data sources in the Baccus Lab.
+ * The class is not abstract, but should not be directly instantiated. It defines
+ * a consistent API which all subclasses should use. This allows client code to
+ * query and manipulate the device, and to retrieve data from it when it becomes
+ * available.
+ *
+ * The source is designed to be, but need not be, placed in a background thread.
+ * Qt's event-based system means that I/O and related methods should not block,
+ * but it still may be useful to place the source in another thread, for example,
+ * if the source object processes data as it is received.
+ *
+ * Because of this, the source object should be communicated with via signals and
+ * slots. These are a request/reply pattern, in which the caller emits a signal
+ * to request the source perform an action (e.g., setting a parameter), the source
+ * tries to do so, and emits another signal indicating the result of that action.
+ */
 class BaseSource : public QObject {
 	Q_OBJECT
 
@@ -43,8 +61,8 @@ class BaseSource : public QObject {
 		/*! Construct a BaseSource object.
 		 * \param sourceType The type of source represented, i.e., "file" or "device".
 		 * \param deviceType The type of the MEA device, e.g., "hidens" or "mcs".
-		 * \param sampleRate Sampling rate of the data.
 		 * \param readInterval The interval (in ms) between reading chunks from the source.
+		 * \param sampleRate Sampling rate of the data.
 		 * \param parent The source's parent.
 		 *
 		 * The constructor stores the parameters in the appopriate data
@@ -52,7 +70,7 @@ class BaseSource : public QObject {
 		 * a frame of data), but otherwise performs no initialization.
 		 */
 		BaseSource(QString sourceType = "none", QString deviceType = "none", 
-				float sampleRate = qSNaN(), int readInterval = 10, 
+				int readInterval = 10, float sampleRate = qSNaN(),
 				QObject *parent = Q_NULLPTR) :
 			QObject(parent), 
 			m_state("invalid"),
@@ -72,7 +90,7 @@ class BaseSource : public QObject {
 			m_trigger("none"),
 			m_analogOutput({})
 		{ 
-			qRegisterMetaType<Samples>();
+			qRegisterMetaType<datasource::Samples>();
 			m_gettableParameters = {
 						"start-time",
 						"state",
@@ -232,6 +250,8 @@ class BaseSource : public QObject {
 					data = m_deviceType;
 				} else if (param == "configuration") {
 					data = QVariant::fromValue<QConfiguration>(m_configuration);
+				} else if (param == "location") {
+					data = m_sourceLocation;
 				} else {
 					valid = false;
 					data = QString("No parameter named \"%1\" exists for the %2 device").
@@ -298,7 +318,7 @@ class BaseSource : public QObject {
 		 * data is laid out with all samples from a single channel, followed by the next
 		 * channel, etc.
 		 */
-		void dataAvailable(Samples samples);
+		void dataAvailable(datasource::Samples samples);
 
 		/*! Emitted when an error occurs on the source.
 		 *
@@ -311,6 +331,7 @@ class BaseSource : public QObject {
 
 	protected:
 
+		/*! Pack all parameters indicating the status of the source into a map. */
 		virtual QVariantMap packStatus() {
 			return {
 					{"state", m_state},
@@ -352,73 +373,78 @@ class BaseSource : public QObject {
 			emit error(message);
 		}
 
-		/* Current state of the source. */
+		/*! Current state of the source. */
 		QString m_state;
 
-		/* Type of source, i.e., "file" or "device" */
+		/*! Type of source, i.e., "file" or "device" */
 		QString m_sourceType;
 
-		/* The device from which the data originated. This the type of
+		/*! The device from which the data originated. This the type of
 		 * the actual MEA on which the data was recorded, e.g., "hexagonal"
 		 * or "hidens".
 		 */
 		QString m_deviceType;
 
-		/* The time at which the connection to the source was made. */
+		/*! The time at which the connection to the source was made. */
 		QDateTime m_connectTime;
 
-		/* The time at which the data stream was started. */
+		/*! The time at which the data stream was started. */
 		QDateTime m_startTime;
 
-		/* The configuration of the array, if this is a HiDens type. */
+		/*! The configuration of the array, if this is a HiDens type. */
 		QConfiguration m_configuration;
 
-		/* A file describing the configuration, to be sent to the chip. */
+		/*! A file describing the configuration, to be sent to the chip. */
 		QString m_configurationFile;
 
-		/* Any error messages */
+		/*! Any error messages */
 		QString m_error;
 
-		/* Interval (in ms) between reading data from the source.
+		/*! Interval (in ms) between reading data from the source.
 		 * This, with the sampling rate, defines the size of a chunk of
 		 * data from the source.
 		 */
 		int m_readInterval;
 
-		/* Sampling rate of data from the source. */
+		/*! Sampling rate of data from the source. */
 		float m_sampleRate;
 
-		/* Size in samples of a single frame of data. */
+		/*! Size in samples of a single frame of data. */
 		int m_frameSize;
 
-		/* Gain of the ADC conversion of the underlying MEA. */
+		/*! Gain of the ADC conversion of the underlying MEA. */
 		float m_gain;
 
-		/* Voltage range of the ADC of the underlying MEA. */
+		/*! Voltage range of the ADC of the underlying MEA. */
 		float m_adcRange;
 
-		/* Number of data channels in the stream. */
+		/*! Number of data channels in the stream. */
 		quint32 m_nchannels;
 
-		/* Neurolizer plug number for HiDens data sources. */
+		/*! Neurolizer plug number for HiDens data sources. */
 		quint32 m_plug;
 
-		/* ID number of the HiDens chip. */
+		/*! ID number of the HiDens chip. */
 		quint32 m_chipId;
 
-		/* Mechanism for triggering the start of the data stream,
+		/*! Mechanism for triggering the start of the data stream,
 		 * e.g., "photodiode" or "none".
 		 */
 		QString m_trigger;
 
-		/* Any analog output for the recording. */
+		/*! Any analog output for the recording. */
 		QVector<double> m_analogOutput;
 
-		/* Set of parameters that are valid in a get() call */
+		/*! Set of parameters that are valid in a get() call */
 		QSet<QString> m_gettableParameters;
 
-		/* Set of parameters that can be set for this data source. */
+		/*! Set of parameters that can be set for this data source. */
 		QSet<QString> m_settableParameters;
+
+		/*! String identifier for this source. For subclasses, this can be
+		 * used to identify the location, such as a filename or a remote hostname.
+		 */
+		QString m_sourceLocation;
 };
 
 }; // end datasource namespace

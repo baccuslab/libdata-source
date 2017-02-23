@@ -12,14 +12,15 @@
 
 namespace datasource {
 
-FileSource::FileSource(const QString& filename, QObject *parent) :
-	BaseSource("file", "none", qSNaN(), 10, parent),
+FileSource::FileSource(const QString& filename, int readInterval, QObject *parent) :
+	BaseSource("file", "none", readInterval, qSNaN(), parent),
 	m_filename(filename),
 	m_currentSample(0)
 {
 	if (!QFile::exists(m_filename)) {
 		throw std::invalid_argument("The requested data file does not exist.");
 	}
+	m_sourceLocation = filename;
 
 	/* 
 	 * Create file of correct runtime type. This will throw a
@@ -131,7 +132,7 @@ void FileSource::stopStream()
 
 void FileSource::readDataFromFile()
 {
-	Samples s;
+	datasource::Samples s;
 	if (m_currentSample >= static_cast<decltype(m_currentSample)>(m_datafile->nsamples())) {
 		/* Wrap data around to the beginning of the file. */
 		m_currentSample = 0;
@@ -148,6 +149,7 @@ void FileSource::readDataFromFile()
 QVariantMap FileSource::packStatus()
 {
 	auto map = BaseSource::packStatus();
+	map.insert("location", m_sourceLocation);
 	if (m_datafile->array().find("hidens") != std::string::npos) {
 		map.insert("configuration", configToJson(m_configuration));
 		map.insert("plug", m_plug);

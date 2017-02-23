@@ -21,12 +21,15 @@ namespace datasource {
  *
  * \param type The type of source to create.
  * \param location The location identifier for the source.
+ * \param readInterval The interval at which data is retrieved from the source,
+ * 	in milliseconds.
  *
  * This method will throw an std::invalid_argument if either the requested
  * type is unknown or if the source could  not be created for some reason
  * (e.g., 'mcs' sources on non-Windows machines).
  */
-BaseSource* create(const QString& type, const QString& location);
+BaseSource* create(const QString& type, const QString& location, 
+		int readInterval = 10);
 
 /*! Serialize a parameter to raw bytes.
  *
