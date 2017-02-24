@@ -25,7 +25,7 @@ namespace datasource {
  * data was recorded, making it useful for testing, debugging, and just
  * visualizating old data.
  */
-class FileSource : public BaseSource {
+class VISIBILITY FileSource : public BaseSource {
 	Q_OBJECT
 
 	public:

@@ -34,8 +34,14 @@ mac {
 linux {
 	LIBS += -L/usr/lib/x86_64-linux-gnu/hdf5/serial
 }
-LIBS += -L../libdatafile/lib -ldatafile \
+LIBS += -L../libdatafile/lib \
 	-L/usr/local/lib -larmadillo -lhdf5_cpp -lhdf5
+win32 {
+	LIBS += -ldatafile0
+	LIBS += -Llib -lnicaiu64 -lNIDAQmx64
+} else {
+	LIBDS += -ldatafile
+}
 
 CONFIG(debug, debug|release) {
 	DEFINES += DEBUG

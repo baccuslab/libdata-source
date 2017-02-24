@@ -9,7 +9,7 @@
 #ifndef MCS_SOURCE_H_
 #define MCS_SOURCE_H_
 
-#ifdef Q_OS_WIN
+#ifdef __MINGW64__
 # include "NIDAQmx-mingw64.h"
 #endif
 
@@ -24,10 +24,10 @@ namespace datasource {
  * using the National Instruments NI-DAQmx driver library. This data source
  * can only be used on Windows machines.
  */
-class McsSource : public BaseSource {
+class VISIBILITY McsSource : public BaseSource {
 	Q_OBJECT
 
-#ifdef Q_OS_WIN
+#ifdef __MINGW64__
 
 		/*! Default value for the device's name, used to 
 		 * refer to the NIDAQ device.
@@ -113,7 +113,7 @@ class McsSource : public BaseSource {
 		McsSource(McsSource&&) = delete;
 		McsSource& operator=(const McsSource&) = delete;
 
-#ifdef Q_OS_WIN
+#ifdef __MINGW64__
 
 	public slots:
 		/*! Method implementing requests to set a named parameter
@@ -151,6 +151,8 @@ class McsSource : public BaseSource {
 		Q_INVOKABLE void readDeviceBuffer();
 
 	private:
+
+		virtual QVariantMap packStatus() Q_DECL_OVERRIDE;
 
 		/* Setup the callback-base mechanism to read new data from
 		 * the NIDAQ buffer as soon as it becomes available.
@@ -257,9 +259,6 @@ class McsSource : public BaseSource {
 		 */
 		int m_bufferMultiplier;
 
-		/*! Voltage range of the A/D conversion. */
-		float m_adcRange;
-
 		/*! Edge on which to trigger, rising or falling. */
 		int32 m_triggerEdge;
 
@@ -341,7 +340,7 @@ class McsSource : public BaseSource {
 				-201003
 			};
 
-#endif // Q_OS_WIN
+#endif // __MINGW64__
 
 };
 
