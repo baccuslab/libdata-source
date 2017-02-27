@@ -16,6 +16,12 @@
 #ifndef BASE_SOURCE_H_
 #define BASE_SOURCE_H_
 
+#ifdef COMPILE_LIBDATA_SOURCE
+# define VISIBILITY Q_DECL_EXPORT
+#else
+# define VISIBILITY Q_DECL_IMPORT
+#endif
+
 #include "configuration.h"
 
 #include <armadillo>
@@ -53,7 +59,7 @@ namespace datasource {
  * to request the source perform an action (e.g., setting a parameter), the source
  * tries to do so, and emits another signal indicating the result of that action.
  */
-class BaseSource : public QObject {
+class VISIBILITY BaseSource : public QObject {
 	Q_OBJECT
 
 	public:
@@ -140,7 +146,7 @@ class BaseSource : public QObject {
 				success = false;
 				msg = "Can only 'initialize' from 'invalid' state.";
 			}
-			emit initialized(true, msg);
+			emit initialized(success, msg);
 		}
 
 		/*! Start the data stream associated with the source.
@@ -344,6 +350,7 @@ class BaseSource : public QObject {
 					{"adc-range", m_adcRange},
 					{"nchannels", m_nchannels},
 					{"has-analog-output", false},
+					{"source-location", m_sourceLocation}
 			};
 		}
 
@@ -376,10 +383,10 @@ class BaseSource : public QObject {
 		/*! Current state of the source. */
 		QString m_state;
 
-		/*! Type of source, i.e., "file" or "device" */
+		/*! Type of source, i.e., "file", "mcs", or "hidens". */
 		QString m_sourceType;
 
-		/*! The device from which the data originated. This the type of
+		/*! The MEA device from which the data originated. This the type of
 		 * the actual MEA on which the data was recorded, e.g., "hexagonal"
 		 * or "hidens".
 		 */

@@ -8,9 +8,11 @@
 
 #include "mcs-source.h"
 
+#include <algorithm> // for std::all_of
+
 namespace datasource {
 
-#ifdef Q_OS_WIN
+#ifdef __MINGW64__
 
 /*! \class DataReadyEvent
  *
@@ -22,28 +24,23 @@ class  DataReadyEvent : public QEvent {
 	public:
 		DataReadyEvent() : QEvent(QEvent::User) { }
 };
-#endif // Q_OS_WIN
+#endif // __MINGW64__
 	
 McsSource::McsSource(int readInterval, QObject *parent) :
-	BaseSource("device", "mcs", readInterval, 10000., parent)
-#ifndef Q_OS_WIN
+	BaseSource("mcs", "mcs", readInterval, 10000., parent)
+#ifndef __MINGW64__
 {
 	throw std::invalid_argument("Cannot create MCS sources on non-Windows machines.");
 }
 #else
 	,
-	m_nchannels(64),
-	m_trigger("none"),
 	m_inputTask(nullptr),
 	m_outputTask(nullptr),
 	m_acquisitionBlockSize(
 			static_cast<float>(m_readInterval) * m_sampleRate / 1000.),
-	m_acquisitionBufferSize(
-			m_acquisitionBufferSize * m_nchannels),
 	m_deviceName(DefaultDeviceName),
 	m_timingSource(DefaultTimingSource),
 	m_bufferMultiplier(DefaultBufferMultiplier),
-	m_adcRange(DefaultAdcRange),
 	m_triggerEdge(DefaultTriggerEdge),
 	m_triggerLevel(DefaultTriggerLevel),
 	m_triggerTimeout(DefaultTriggerTimeout),
@@ -58,16 +55,16 @@ McsSource::McsSource(int readInterval, QObject *parent) :
 	m_otherChannelWiringType(DefaultOtherChannelWiringType)
 {
 
-	/* Ask Qt to initialize its resources, which are stored in the
-	 * `./resources/` folder, and in this case consist of the `mcs-sourc.conf`
-	 * configuration file.
-	 */
-	Q_INIT_RESOURCES(resources);
+	/* Init some basic information */
+	m_adcRange = DefaultAdcRange;
+	m_gain = (m_adcRange * 2) / (1 << 16);
+	m_nchannels = 64;
+	m_acquisitionBufferSize = m_acquisitionBlockSize * m_nchannels;
+	m_trigger = "none";
 
 	/* Initialize acquisition buffer */
 	m_acqBuffer.set_size(m_acquisitionBlockSize, m_nchannels);
 	m_acqBuffer.fill(0);
-	m_gain = (m_adcRange * 2) / (1 << 16);
 
 	/* Setup the MCS-specific parameters that can be manipulated
 	 * and retrieved.
@@ -80,25 +77,26 @@ McsSource::McsSource(int readInterval, QObject *parent) :
 	m_gettableParameters.insert("trigger");
 
 	/* Get the runtime-constructed ID for the data-ready event. */
-	m_dataReadyEventType = DataReadEvent{}.type();
+	m_dataReadyEventType = DataReadyEvent{}.type();
 }
-#endif // Q_OS_WIN
+#endif // __MINGW64__
 
 McsSource::~McsSource()
-#ifndef Q_OS_WIN
+#ifndef __MINGW64__
 {
 }
 #else
 {
 	resetTasks();
 }
-#endif // Q_OS_WIN
+#endif // __MINGW64__
 
-#ifdef Q_OS_WIN
+#ifdef __MINGW64__
 
 void McsSource::readConfigurationFile()
 {
 	if (!QFile::exists(":/mcs-source.conf")) {
+		qWarning().noquote() << "mcs-source.conf not found, using defaults.";
 		return;
 	}
 	QSettings settings(":/mcs-source.conf", QSettings::IniFormat);
@@ -163,7 +161,7 @@ void McsSource::readConfigurationFile()
 	}
 
 	auto meaChans = settings.value("mea-channels/physical-channels").toString();
-	if (meaChans.starstWith("ai")) {
+	if (meaChans.startsWith("ai")) {
 		m_meaPhysicalChannels = meaChans;
 	}
 
@@ -212,6 +210,81 @@ void McsSource::readConfigurationFile()
 	}
 }
 
+void McsSource::set(QString param, QVariant value)
+{
+	/* Verify the parameter is settable */
+	if (!m_settableParameters.contains(param)) {
+		emit setResponse(param, false,
+				"The requested parameter is not settable for MCS sources.");
+		return;
+	}
+
+	/* Check the current state. */
+	if (m_state != "initialized") {
+		emit setResponse(param, false,
+				"Can only set parameters while in the 'initialized' state.");
+		return;
+	}
+
+	if (param == "adc-range") {
+
+		/* Parse as floating point within the limits. */
+		bool ok;
+		auto range = value.toFloat(&ok);
+		if (!ok || range < m_adcRangeLimits.first ||
+				range > m_adcRangeLimits.second) {
+			emit setResponse(param, false, 
+					QString("The requested ADC range is not in the "
+						"range of [%1, %2].").arg(m_adcRangeLimits.first).arg(
+						m_adcRangeLimits.second));
+			return;
+		}
+		m_adcRange = range;
+		m_gain = (m_adcRange * 2.0) / (1 << 16);
+		emit setResponse(param, true);
+		return;
+
+	} else if (param == "trigger") {
+
+		/* Parse as one of valid strings. */
+		auto trig = value.toString().toLower();
+		if (trig == "photodiode" || trig == "none") {
+			m_trigger = trig;
+			emit setResponse(param, true);
+			return;
+		} else {
+			emit setResponse(param, false, "Supported triggers are"
+					" 'photodiode' and 'none'");
+			return;
+		}
+
+	} else if (param == "analog-output") {
+
+		/* Verify it's a vector. */
+		if (!value.canConvert<QVector<double>>()) {
+			emit setResponse(param, false, 
+					"Analog output must be specified as a vector of doubles");
+			return;
+		}
+
+		/* Convert to vector and verify all values within range. */
+		auto aout = value.value<QVector<double>>();
+		auto limit = m_adcRange;
+		auto valid = std::all_of(aout.begin(), aout.end(),
+				[&limit](double val) -> bool {
+					return (std::abs(val) <= limit);
+				});
+		if (!valid) {
+			emit setResponse(param, false,
+					QString("Analog output values must be within the"
+						" ADC range of %1.").arg(limit));
+			return;
+		}
+		m_analogOutput = aout;
+		emit setResponse(param, true);
+	}
+}
+
 void McsSource::resetTasks()
 {
 	if (m_inputTask) {
@@ -222,6 +295,7 @@ void McsSource::resetTasks()
 		DAQmxClearTask(m_outputTask);
 		m_outputTask = nullptr;
 	}
+	DAQmxResetDevice(m_deviceName.toStdString().c_str());
 }
 
 int32 McsSource::setupAnalogOutput()
@@ -254,8 +328,15 @@ int32 McsSource::setupAnalogOutput()
 	}
 
 	/* Configure timing. */
-	status = DAQmxCfgSamClkTiming(m_outputTask,
-			m_analogOutputClockSource.toStdString().c_str(),
+	QStringList parts = {
+			m_deviceName,
+			"ai",
+			m_analogOutputClockSource
+	};
+	auto clock = parts.join("/");
+	clock.prepend("/"); // Should be something like /Dev1/ai/SampleClock
+	status = DAQmxCfgSampClkTiming(m_outputTask, 
+			clock.toStdString().c_str(),
 			m_sampleRate, m_triggerEdge, m_deviceSampleMode,
 			m_analogOutput.size() * sizeof(double));
 	if (status) {
@@ -291,7 +372,7 @@ int32 McsSource::setupAnalogInput()
 	/* Create photodiode channel. */
 	int32 termConfig = ((m_photodiodeWiringType == "NRSE") ?
 			DAQmx_Val_NRSE : DAQmx_Val_RSE);
-	status = DAQmxCreateAIVoltageCHan(m_inputTask,
+	status = DAQmxCreateAIVoltageChan(m_inputTask,
 			(m_deviceName + "/" + 
 			 m_photodiodePhysicalChannel).toStdString().c_str(), nullptr,
 			termConfig, -m_adcRange, m_adcRange, DAQmx_Val_Volts, nullptr);
@@ -330,7 +411,7 @@ int32 McsSource::setupAnalogInput()
 	}
 
 	/* Configure timing */
-	status = DAQmxCfgSamClkTiming(m_inputTask,
+	status = DAQmxCfgSampClkTiming(m_inputTask,
 			m_timingSource.toStdString().c_str(), m_sampleRate,
 			m_triggerEdge, m_deviceSampleMode,
 			m_bufferMultiplier * m_acquisitionBufferSize);
@@ -346,22 +427,26 @@ int32 McsSource::configureTriggering()
 {
 	int32 status = 0;
 	if (m_trigger.toLower() == "photodiode") {
+
+		/* Use photodiode channel as trigger for both tasks. */
+		auto trig = (m_deviceName + "/" + 
+				m_triggerPhysicalChannel).toStdString().c_str();
 		status = DAQmxCfgAnlgEdgeStartTrig(m_inputTask,
-				(m_deviceName + "/" + m_triggerPhysicalChannel).toStdString().c_str(),
-				m_triggerEdge, m_triggerLevel);
+				trig, m_triggerEdge, m_triggerLevel);
 		if (status) {
 			return status;
 		}
 
 		if (m_outputTask) {
 			status = DAQmxCfgAnlgEdgeStartTrig(m_inputTask,
-					(m_deviceName + "/" + m_triggerPhysicalChannel).toStdString().c_str(),
-					m_triggerEdge, m_triggerLevel);
+					trig, m_triggerEdge, m_triggerLevel);
 			if (status) {
 				return status;
 			}
 		}
 	} else {
+
+		/* Disable triggering, i.e., start immediately. */
 		status = DAQmxDisableStartTrig(m_inputTask);
 		if (status)
 			return status;
@@ -381,10 +466,15 @@ void McsSource::initialize()
 	QString msg;
 
 	if (m_state == "invalid") {
+		/* Initialization consists of verifying that we can
+		 * actually reach the device and that it seems to be
+		 * acting normally.
+		 */
 		auto status = DAQmxSelfTestDevice(m_deviceName.toStdString().c_str());
 		if (status) {
 			success = false;
-			msg = "The NIDAQ is not reachable or not working. Verify that it is powered.";
+			msg = "The NIDAQ is not reachable or not working."
+				" Verify that it is powered.";
 		} else {
 			success = true;
 			m_state = "initialized";
@@ -403,20 +493,8 @@ void McsSource::startStream()
 
 	if (m_state == "initialized") {
 
-		/* Setup the notification system for reading data from
-		 * device as it becomes available.
-		 */
-		auto status = setupReadCallback();
-		if (status) {
-			msg = QString("Failed to initialize read callback: %1").arg(
-					getDaqmxError(status));
-			resetTasks();
-			emit streamStarted(false, msg);
-			return;
-		}
-
 		/* Setup the analog input task. */
-		status = setupAnalogInput();
+		auto status = setupAnalogInput();
 		if (status) {
 			msg = QString("Failed to setup analog input task: %1").arg(
 					getDaqmxError(status));
@@ -445,14 +523,47 @@ void McsSource::startStream()
 			return;
 		}
 
+		/* Setup the notification system for reading data from
+		 * device as it becomes available.
+		 */
+		status = setupReadCallback();
+		if (status) {
+			msg = QString("Failed to initialize read callback: %1").arg(
+					getDaqmxError(status));
+			resetTasks();
+			emit streamStarted(false, msg);
+			return;
+		}
+
 		/* Reserve resources for the tasks. */
 		status = finalizeTaskStartup();
 		if (status) {
 			msg = QString("Failed to finalize task startup: %1").arg(
 					getDaqmxError(status));
 			resetTasks();
-			emit streamStarte(false, msg);
+			emit streamStarted(false, msg);
 			return;
+		}
+
+		/* Actually start the tasks. */
+		status = DAQmxStartTask(m_inputTask);
+		if (status) {
+			msg = QString("Failed to start analog input task: %1").arg(
+					getDaqmxError(status));
+			resetTasks();
+			emit streamStarted(false, msg);
+			return;
+		}
+
+		if (m_outputTask) {
+			status = DAQmxStartTask(m_outputTask);
+			if (status) {
+				msg = QString("Failed to start analog output task: %1").arg(
+						getDaqmxError(status));
+				resetTasks();
+				emit streamStarted(false, msg);
+				return;
+			}
 		}
 
 		/* Everything setup correctly. */
@@ -468,6 +579,50 @@ void McsSource::startStream()
 
 void McsSource::stopStream()
 {
+	bool success;
+	QString msg;
+	if (m_state == "streaming") {
+
+		/* Stop analog input */
+		auto status = DAQmxStopTask(m_inputTask);
+		if (status) {
+			msg = QString("Failed to stop analog input task: %1").arg(
+					getDaqmxError(status));
+			resetTasks();
+			emit streamStopped(false, msg);
+			return;
+		}
+
+		/* Stop analog output */
+		if (m_outputTask) {
+			status = DAQmxStopTask(m_outputTask);
+			if (status) {
+				msg = QString("Failed to stop analog input task: %1").arg(
+						getDaqmxError(status));
+				resetTasks();
+				emit streamStopped(false, msg);
+				return;
+			}
+
+			/* Also delete the analog output. This forces clients
+			 * to send it for each recording, but it prevents having
+			 * to clear it between.
+			 */
+			m_analogOutput.clear();
+		}
+
+		/* Reset all tasks. */
+		resetTasks();
+
+		/* Successful, change state. */
+		success = true;
+		m_state = "initialized";
+
+	} else {
+		success = false;
+		msg = "Can only stop the task from the 'streaming' state.";
+	}
+	emit streamStopped(success, msg);
 }
 
 QString McsSource::getDaqmxError(int32 code)
@@ -477,7 +632,8 @@ QString McsSource::getDaqmxError(int32 code)
 		msg = "The NIDAQ device was disconnected.";
 	} else if (code == NidaqTimeoutError) {
 		msg = QString("The recording was not triggered "
-				"within the timeout of %1 seconds.").arg(m_triggerTimeout, 'f', 1);
+				"within the timeout of %1 seconds.").arg(
+					m_triggerTimeout, 0, 'f', 1);
 	} else if (code == NidaqAbortedError) {
 		msg = "The task was aborted.";
 	} else {
@@ -505,8 +661,9 @@ void McsSource::readDeviceBuffer()
 			m_triggerTimeout, m_deviceFillMode, m_acqBuffer.memptr(),
 			m_acquisitionBufferSize, &nread, nullptr);
 	if (status) {
+		qInfo() << m_acqBuffer.memptr();
 		resetTasks();
-		emit error(QString("Qn error occurred reading data from the MCS"
+		emit error(QString("An error occurred reading data from the MCS"
 					" source: %1").arg(getDaqmxError(status)));
 		return;
 	}
@@ -522,7 +679,7 @@ void McsSource::readDeviceBuffer()
 
 bool McsSource::event(QEvent* event)
 {
-	if (event->type() == QEvent::User)
+	if (event->type() == m_dataReadyEventType)
 		readDeviceBuffer();
 	return BaseSource::event(event);
 }
@@ -537,7 +694,17 @@ int32 CVICALLBACK dataAvailableNotifier(TaskHandle /* task */,
 {
 	auto source = reinterpret_cast<McsSource*>(data);
 	if (source) {
-		qApp->postEvent(source, new DataReadyEvent);
+		/* Note that we MUST use the QCoreApplication::instance()
+		 * method, rather than the qApp macro, AND postEvent()
+		 * rather than sendEvent() or notify(). The first is
+		 * qApp requires a QApplication/QGuiApplication, which
+		 * may not actually be the case (e.g., in the BLDS.).
+		 * The second is because this callback runs in its own
+		 * thread, separate from the McsSource object, so we
+		 * need to send it a queued event, rather than calling
+		 * the method immediately.
+		 */
+		QCoreApplication::instance()->postEvent(source, new DataReadyEvent);
 	}
 	return 0;
 }
@@ -562,8 +729,7 @@ QVariantMap McsSource::packStatus()
 	status.insert("analog-output-size", m_analogOutput.size());
 	status.insert("trigger", m_trigger);
 }
-
-#endif // Q_OS_WIN
+#endif // __MINGW64__
 
 }; // end datasource namespace
 

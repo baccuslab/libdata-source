@@ -14,7 +14,7 @@
 namespace datasource {
 
 HidensSource::HidensSource(const QString& addr, int readInterval, QObject *parent) :
-	BaseSource("device", "hidens", readInterval, SampleRate, parent),
+	BaseSource("hidens", "hidens", readInterval, SampleRate, parent),
 	m_addr(addr),
 	m_port(HidensPort),
 	m_electrodeIndices(m_hidensFrameSize)
