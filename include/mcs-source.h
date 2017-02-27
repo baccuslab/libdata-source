@@ -24,7 +24,7 @@ namespace datasource {
  * using the National Instruments NI-DAQmx driver library. This data source
  * can only be used on Windows machines.
  */
-class VISIBILITY McsSource : public BaseSource {
+class LIBDATA_SOURCE_VISIBILITY McsSource : public BaseSource {
 	Q_OBJECT
 
 #ifdef __MINGW64__
@@ -152,6 +152,10 @@ class VISIBILITY McsSource : public BaseSource {
 
 	private:
 
+		/*! Override to the BaseSource implementation of packStatus()
+		 * which adds information about the analog output and the
+		 * triggering mechanism to the status map.
+		 */
 		virtual QVariantMap packStatus() Q_DECL_OVERRIDE;
 
 		/* Setup the callback-base mechanism to read new data from
@@ -213,8 +217,6 @@ class VISIBILITY McsSource : public BaseSource {
 		 * reading data from the buffer.
 		 */
 		virtual bool event(QEvent* ev) Q_DECL_OVERRIDE;
-
-		virtual QVariantMap packStatus() Q_DECL_OVERRIDE;
 
 		/* A pointer to the DAQmx task handle object used to manage the
 		 * analog input task.

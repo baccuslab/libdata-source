@@ -17,9 +17,9 @@
 #define BASE_SOURCE_H_
 
 #ifdef COMPILE_LIBDATA_SOURCE
-# define VISIBILITY Q_DECL_EXPORT
+# define LIBDATA_SOURCE_VISIBILITY Q_DECL_EXPORT
 #else
-# define VISIBILITY Q_DECL_IMPORT
+# define LIBDATA_SOURCE_VISIBILITY Q_DECL_IMPORT
 #endif
 
 #include "configuration.h"
@@ -59,7 +59,7 @@ namespace datasource {
  * to request the source perform an action (e.g., setting a parameter), the source
  * tries to do so, and emits another signal indicating the result of that action.
  */
-class VISIBILITY BaseSource : public QObject {
+class LIBDATA_SOURCE_VISIBILITY BaseSource : public QObject {
 	Q_OBJECT
 
 	public:

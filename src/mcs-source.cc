@@ -729,7 +729,7 @@ QVariantMap McsSource::packStatus()
 	status.insert("analog-output", QVariant::fromValue(m_analogOutput));
 	status.insert("analog-output-size", m_analogOutput.size());
 	status.insert("trigger", m_trigger);
-	return map;
+	return status;
 }
 #endif // __MINGW64__
 

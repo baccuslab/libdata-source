@@ -31,7 +31,7 @@ namespace datasource {
  * protocol. So this BaseSource subclass *really should* be in a background
  * thread.
  */
-class VISIBILITY HidensSource : public BaseSource {
+class LIBDATA_SOURCE_VISIBILITY HidensSource : public BaseSource {
 	Q_OBJECT
 
 	/*! The IP address for the Hidens ThreadedServer application. */

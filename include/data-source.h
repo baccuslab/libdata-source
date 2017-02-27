@@ -28,7 +28,7 @@ namespace datasource {
  * type is unknown or if the source could  not be created for some reason
  * (e.g., 'mcs' sources on non-Windows machines).
  */
-BaseSource* VISIBILITY create(const QString& type, const QString& location, 
+BaseSource* LIBDATA_SOURCE_VISIBILITY create(const QString& type, const QString& location, 
 		int readInterval = 10);
 
 /*! Serialize a parameter to raw bytes.
@@ -39,7 +39,7 @@ BaseSource* VISIBILITY create(const QString& type, const QString& location,
  * This is intended to be used by the BLDS application to communicate
  * with remote clients.
  */
-QByteArray VISIBILITY serialize(const QString& param, const QVariant& data);
+QByteArray LIBDATA_SOURCE_VISIBILITY serialize(const QString& param, const QVariant& data);
 
 /*! Deserialize a parameter from raw bytes.
  * 
@@ -49,7 +49,7 @@ QByteArray VISIBILITY serialize(const QString& param, const QVariant& data);
  * This is intended to be used by the BLDS application to communicate
  * with remote clients.
  */
-QVariant VISIBILITY deserialize(const QString& param, const QByteArray& buffer);
+QVariant LIBDATA_SOURCE_VISIBILITY deserialize(const QString& param, const QByteArray& buffer);
 
 }; // end datasource namespace
 
