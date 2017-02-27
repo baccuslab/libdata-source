@@ -34,22 +34,124 @@ BaseSource* LIBDATA_SOURCE_VISIBILITY create(const QString& type, const QString&
 /*! Serialize a parameter to raw bytes.
  *
  * \param param The name of the parameter to be serialized.
- * \param data The data for the parameter.
+ * \param value The data for the parameter.
  *
- * This is intended to be used by the BLDS application to communicate
+ * \note This is intended to be used by the BLDS application to communicate
  * with remote clients.
+ *
+ * \note This method is defined in this header file, rather than
+ * the src/data-source.cc implementation file, so that client code
+ * need only include this file and not require linking to the
+ * actual shared library if they only want serialization functionality.
  */
-QByteArray LIBDATA_SOURCE_VISIBILITY serialize(const QString& param, const QVariant& data);
-
+QByteArray serialize(const QString& param, const QVariant& value)
+{
+	QByteArray buffer;
+	if ( (param == "trigger") ||
+			(param == "connect-time") ||
+			(param == "start-time") ||
+			(param == "source-type") ||
+			(param == "device-type") ||
+			(param == "state") ||
+			(param == "location") ){
+		/* String, serialized as UTF8 byte array. */
+		buffer = value.toByteArray();
+	} else if ( (param == "nchannels") ||
+			(param == "plug") ||
+			(param == "chip-id") ||
+			(param == "read-interval") ){
+		/* Unsigned integer types, serialized as uint32_t. */
+		quint32 x = value.toUInt();
+		buffer.resize(sizeof(x));
+		std::memcpy(buffer.data(), &x, sizeof(x));
+	} else if (param == "has-analog-output") {
+		/* Boolean */
+		buffer.resize(sizeof(bool));
+		auto val = value.toBool();
+		std::memcpy(buffer.data(), &val, sizeof(bool));
+	} else if (param == "analog-output") {
+		/* Analog output is QVector<double>, serialize size as
+		 * uint32_t followed by raw samples.
+		 */
+		auto aout = value.value<QVector<double>>();
+		quint32 size = aout.size();
+		buffer.resize(sizeof(size) + sizeof(double) * size);
+		std::memcpy(buffer.data(), &size, sizeof(size));
+		std::memcpy(buffer.data() + sizeof(size), aout.data(), size * sizeof(double));
+	} else if ( (param == "gain") ||
+			(param == "adc-range") ||
+			(param == "sample-rate") ){
+		/* Floating point types. */
+		float x = value.toFloat();
+		buffer.resize(sizeof(x));
+		std::memcpy(buffer.data(), &x, sizeof(x));
+	} else if (param == "configuration") {
+		/* Configuration is a vector of Electrode structs. Serialize
+		 * size as uint32_t followed by raw data.
+		 */
+		auto config = value.value<QConfiguration>();
+		quint32 size = config.size();
+		buffer.resize(sizeof(size) + size * sizeof(Electrode));
+		std::memcpy(buffer.data(), &size, sizeof(size));
+		std::memcpy(buffer.data() + sizeof(size), config.data(), 
+				size * sizeof(Electrode));
+	}
+	return buffer;
+}
 /*! Deserialize a parameter from raw bytes.
  * 
  * \param param The name of the parameter to be deserialized.
  * \param buffer The raw bytes in which the parameter is encoded.
  *
- * This is intended to be used by the BLDS application to communicate
+ * \note This is intended to be used by the BLDS application to communicate
  * with remote clients.
+ *
+ * \note This method is defined in this header file, rather than
+ * the src/data-source.cc implementation file, so that client code
+ * need only include this file and not require linking to the
+ * actual shared library if they only want serialization functionality.
  */
-QVariant LIBDATA_SOURCE_VISIBILITY deserialize(const QString& param, const QByteArray& buffer);
+QVariant deserialize(const QString& param, const QByteArray& buffer)
+{
+	QVariant data;
+	if ( (param == "trigger") ||
+			(param == "connect-time") ||
+			(param == "start-time") ||
+			(param == "source-type") ||
+			(param == "device-type") ||
+			(param == "state") ||
+			(param == "location") ){
+		data = buffer;
+	} else if ( (param == "nchannels") ||
+			(param == "plug") ||
+			(param == "chip-id") ||
+			(param == "read-interval") ){
+		quint32 x = 0;
+		std::memcpy(&x, buffer.data(), sizeof(x));
+		data = x;
+	} else if (param == "analog-output") {
+		quint32 size = 0;
+		std::memcpy(&size, buffer.data(), sizeof(size));
+		QVector<double> aout(size);
+		std::memcpy(aout.data(), buffer.data() + sizeof(size), 
+				size * sizeof(double));
+		data = QVariant::fromValue<decltype(aout)>(aout);
+	} else if ( (param == "gain") ||
+			(param == "adc-range") ||
+			(param == "sample-rate") ){
+		float x = 0.0;
+		std::memcpy(&x, buffer.data(), sizeof(x));
+		data = x;
+	} else if (param == "configuration") {
+		quint32 size = 0;
+		std::memcpy(&size, buffer.data(), sizeof(size));
+		QConfiguration config(size);
+		std::memcpy(config.data(), buffer.data() + sizeof(size),
+				size * sizeof(Electrode));
+		data = QVariant::fromValue<decltype(config)>(config);
+	}
+	return data;
+}
 
 }; // end datasource namespace
 
