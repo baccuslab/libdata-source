@@ -9,6 +9,7 @@ debug/*
 release/*
 docs/*
 test/test
+test/target_wrapper.sh
 *.rc
 lib/*
 object_script*
