@@ -8,3 +8,7 @@ Makefile*
 debug/*
 release/*
 docs/*
+test/test
+*.rc
+lib/*
+object_script*

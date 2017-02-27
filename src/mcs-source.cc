@@ -429,17 +429,18 @@ int32 McsSource::configureTriggering()
 	if (m_trigger.toLower() == "photodiode") {
 
 		/* Use photodiode channel as trigger for both tasks. */
-		auto trig = (m_deviceName + "/" + 
-				m_triggerPhysicalChannel).toStdString().c_str();
+		auto trigger = (m_deviceName + "/" + m_triggerPhysicalChannel);
 		status = DAQmxCfgAnlgEdgeStartTrig(m_inputTask,
-				trig, m_triggerEdge, m_triggerLevel);
+				trigger.toStdString().c_str(), 
+				m_triggerEdge, m_triggerLevel);
 		if (status) {
 			return status;
 		}
 
 		if (m_outputTask) {
 			status = DAQmxCfgAnlgEdgeStartTrig(m_inputTask,
-					trig, m_triggerEdge, m_triggerLevel);
+					trigger.toStdString().c_str(), 
+					m_triggerEdge, m_triggerLevel);
 			if (status) {
 				return status;
 			}
@@ -728,6 +729,7 @@ QVariantMap McsSource::packStatus()
 	status.insert("analog-output", QVariant::fromValue(m_analogOutput));
 	status.insert("analog-output-size", m_analogOutput.size());
 	status.insert("trigger", m_trigger);
+	return map;
 }
 #endif // __MINGW64__
 
