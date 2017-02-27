@@ -212,6 +212,8 @@ class McsSource : public BaseSource {
 		 */
 		virtual bool event(QEvent* ev) Q_DECL_OVERRIDE;
 
+		virtual QVariantMap packStatus() Q_DECL_OVERRIDE;
+
 		/* A pointer to the DAQmx task handle object used to manage the
 		 * analog input task.
 		 */

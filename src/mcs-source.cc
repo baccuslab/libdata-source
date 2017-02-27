@@ -28,6 +28,7 @@ McsSource::McsSource(int readInterval, QObject *parent) :
 	BaseSource("device", "mcs", readInterval, 10000., parent)
 #ifndef Q_OS_WIN
 {
+	throw std::invalid_argument("Cannot create MCS sources on non-Windows machines.");
 }
 #else
 	,
@@ -552,6 +553,14 @@ int32 McsSource::setupReadCallback()
 	return DAQmxRegisterEveryNSamplesEvent(m_inputTask,
 			DAQmx_Val_Acquired_Into_Buffer, m_acquisitionBlockSize, 0,
 			dataAvailableNotifier, this);
+}
+
+QVariantMap McsSource::packStatus()
+{
+	auto status = BaseSource::packStatus();
+	status.insert("analog-output", QVariant::fromValue(m_analogOutput));
+	status.insert("analog-output-size", m_analogOutput.size());
+	status.insert("trigger", m_trigger);
 }
 
 #endif // Q_OS_WIN

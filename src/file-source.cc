@@ -26,6 +26,7 @@ FileSource::FileSource(const QString& filename, int readInterval, QObject *paren
 	 * Create file of correct runtime type. This will throw a
 	 * std::invalid_argument if the file cannot be created.
 	 */
+	m_gettableParameters.insert("location");
 	if (datafile::array(m_filename.toStdString()) == "hidens") {
 		m_datafile.reset(new hidensfile::HidensFile(m_filename.toStdString()));
 		m_gettableParameters.insert("configuration");

@@ -343,7 +343,7 @@ class BaseSource : public QObject {
 					{"gain", m_gain},
 					{"adc-range", m_adcRange},
 					{"nchannels", m_nchannels},
-					{"has-analog-output", false}
+					{"has-analog-output", false},
 			};
 		}
 
