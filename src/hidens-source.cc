@@ -38,6 +38,8 @@ HidensSource::HidensSource(const QString& addr, int readInterval, QObject *paren
 
 	m_gettableParameters.insert("configuration");
 	m_settableParameters.insert("configuration");
+	m_gettableParameters.insert("configuration-file");
+	m_settableParameters.insert("configuration-file");
 	m_gettableParameters.insert("plug");
 	m_settableParameters.insert("plug");
 }
@@ -69,17 +71,20 @@ void HidensSource::startStream()
 	QString msg;
 	if (m_state == "initialized") {
 		if (m_plug > 4) {
-			valid = false;
 			msg = QString("Cannot start HiDens data stream with source plug = %1").arg(m_plug);
+			emit streamStarted(false, msg);
+			return;
 		}
 		if (m_configuration.size() == 0) {
-			valid = false;
 			msg = "Cannot initialize HiDens source with empty configuration.";
+			emit streamStarted(false, msg);
+			return;
 		}
 		if (std::isnan(m_gain) || 
 				( (m_gain < 0.) || (m_gain > 10000.) )) {
-			valid = false;
 			msg = QString("Cannot initialize HiDens source with gain = %1").arg(m_gain);
+			emit streamStarted(false, msg);
+			return;
 		}
 		m_state = "streaming";
 		requestData("live");
@@ -155,6 +160,10 @@ void HidensSource::set(QString param, QVariant value)
 		return;
 
 	} else if (param == "configuration") {
+		emit setResponse(param, false, "Setting Hidens configurations directly from "
+				"the command bytes is not yet supported. Set it via the 'configuration-file' "
+				"parameter until this is implemented");
+	} else if (param == "configuration-file") {
 
 		if (m_plug == static_cast<unsigned>(-1)) {
 			emit setResponse(param, false,
@@ -498,6 +507,7 @@ QVariantMap HidensSource::packStatus()
 	auto map = BaseSource::packStatus();
 	map.insert("location", m_sourceLocation);
 	map.insert("configuration", configToVariant(m_configuration));
+	map.insert("configuration-file", m_configurationFile.toUtf8());
 	map.insert("plug", m_plug);
 	return map;
 }

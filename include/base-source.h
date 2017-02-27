@@ -256,6 +256,8 @@ class LIBDATA_SOURCE_VISIBILITY BaseSource : public QObject {
 					data = m_deviceType;
 				} else if (param == "configuration") {
 					data = QVariant::fromValue<QConfiguration>(m_configuration);
+				} else if (param == "configuration-file") {
+					data = m_configurationFile;
 				} else if (param == "location") {
 					data = m_sourceLocation;
 				} else {
