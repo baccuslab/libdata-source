@@ -14,6 +14,7 @@
 
 #include <vector>
 #include <ostream>
+#include <cstring> // memcpy
 
 /*! A single HiDens chip electrode */
 struct Electrode {
@@ -92,6 +93,47 @@ struct Electrode {
 		/*! Encode an electrode into a QVariant */
 		QVariant toVariant() const {
 			return QVariant::fromValue<Electrode>(*this);
+		}
+
+		/*! Return the size of the struct as raw bytes. */
+		static size_t bytesize() {
+			return (3 * sizeof(quint32) + 2 * sizeof(quint16) + sizeof(quint8));
+		}
+
+		/*! Serialize an electrode to a byte array. */
+		QByteArray serialize() const {
+			QByteArray buffer(Electrode::bytesize(), '\0');
+			auto offset = 0;
+			std::memcpy(buffer.data() + offset, &index, sizeof(index));
+			offset += sizeof(index);
+			std::memcpy(buffer.data() + offset, &xpos, sizeof(xpos));
+			offset += sizeof(xpos);
+			std::memcpy(buffer.data() + offset, &x, sizeof(x));
+			offset += sizeof(x);
+			std::memcpy(buffer.data() + offset, &ypos, sizeof(ypos));
+			offset += sizeof(ypos);
+			std::memcpy(buffer.data() + offset, &y, sizeof(y));
+			offset += sizeof(y);
+			std::memcpy(buffer.data() + offset, &label, sizeof(label));
+			return buffer;
+		}
+
+		/*! Deserialize an electrode from a byte array. */
+		static Electrode deserialize(const QByteArray& buffer) {
+			Electrode el;
+			auto offset = 0;
+			std::memcpy(&el.index, buffer.data(), sizeof(el.index));
+			offset += sizeof(el.index);
+			std::memcpy(&el.xpos, buffer.data() + offset, sizeof(el.xpos));
+			offset += sizeof(el.xpos);
+			std::memcpy(&el.x, buffer.data() + offset, sizeof(el.x));
+			offset += sizeof(el.x);
+			std::memcpy(&el.ypos, buffer.data() + offset, sizeof(el.ypos));
+			offset += sizeof(el.ypos);
+			std::memcpy(&el.y, buffer.data() + offset, sizeof(el.y));
+			offset += sizeof(el.y);
+			std::memcpy(&el.label, buffer.data() + offset, sizeof(el.label));
+			return el;
 		}
 };
 

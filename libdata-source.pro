@@ -10,6 +10,10 @@ INCLUDEPATH += . \
 	/usr/local/include \
 	../
 
+linux {
+	INCLUDEPATH += /usr/include/hdf5/serial
+}
+
 MOC_DIR = build
 OBJECTS_DIR = build
 DESTDIR = lib
@@ -40,7 +44,7 @@ win32 {
 	LIBS += -ldatafile0
 	LIBS += -Llib -lnicaiu64 -lNIDAQmx64
 } else {
-	LIBDS += -ldatafile
+	LIBS += -ldatafile
 }
 
 CONFIG(debug, debug|release) {

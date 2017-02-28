@@ -73,10 +73,20 @@ QByteArray serialize(const QString& param, const QVariant& value)
 		 */
 		auto config = value.value<QConfiguration>();
 		quint32 size = config.size();
-		buffer.resize(sizeof(size) + size * sizeof(Electrode));
-		std::memcpy(buffer.data(), &size, sizeof(size));
-		std::memcpy(buffer.data() + sizeof(size), config.data(), 
-				size * sizeof(Electrode));
+		quint32 elsize = size ? config.at(0).bytesize() : 0; // get size of electrode
+		buffer.resize(sizeof(size) + size * elsize);
+		std::memcpy(buffer.data(), &size, sizeof(size)); // copy size of the configuration
+
+		/* Copy configuration data. It would be great to be
+		 * able to do this as a bulk memcpy. But the Electrode
+		 * struct is an odd size, and so the sizeof operator
+		 * returns different sizes for different compilers.
+		 * Instead, just loop through electrodes and copy them.
+		 */
+		for (decltype(size) i = 0; i < size; i++) {
+			buffer.replace(sizeof(size) + i * elsize, elsize,
+					config.at(i).serialize());
+		}
 	}
 	return buffer;
 }
@@ -115,10 +125,14 @@ QVariant deserialize(const QString& param, const QByteArray& buffer)
 		data = x;
 	} else if (param == "configuration") {
 		quint32 size = 0;
+		auto elsize = Electrode::bytesize();
+		auto bufsize = buffer.size();
 		std::memcpy(&size, buffer.data(), sizeof(size));
 		QConfiguration config(size);
-		std::memcpy(config.data(), buffer.data() + sizeof(size),
-				size * sizeof(Electrode));
+		for (decltype(size) i = 0; i < size; i ++) {
+			config[i] = Electrode::deserialize(
+					buffer.right(bufsize - (sizeof(size) + (i * elsize))));
+		}
 		data = QVariant::fromValue<decltype(config)>(config);
 	}
 	return data;

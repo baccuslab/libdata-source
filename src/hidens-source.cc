@@ -438,6 +438,9 @@ void HidensSource::getConfigurationFromServer()
 		el.label = positionList[5][0].toLatin1();
 		m_configuration << el;
 	}
+
+	/* Add 1 channel for photodiode. */
+	m_nchannels += 1;
 }
 
 QPair<bool, QString> HidensSource::sendConfigToFpga(

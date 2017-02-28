@@ -9,10 +9,20 @@ INCLUDEPATH += . \
 	../../ \
 	../../libdatafile/include
 
-LIBS += -L../lib/ -ldata-source
+linux {
+	INCLUDEPATH += /usr/include/hdf5/serial
+}
+
+LIBS += -L../lib/
+
+win32 {
+	LIBS += -ldata-source0
+} else {
+	LIBS += -ldata-source
+}
 	
 QT += testlib network concurrent
-CONFIG += testcase debug
+CONFIG += c++11 testcase debug
 CONFIG -= app_bundle
 
 QMAKE_RPATHDIR += $$(PWD)/../lib $$(PWD)/../../libdatafile/lib
