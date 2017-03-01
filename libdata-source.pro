@@ -31,6 +31,7 @@ QMAKE_CXXFLAGS += -Wno-attributes
 win32 {
 	CONFIG += console
 	LIBS += -Llib -lnicaiu64
+	QMAKE_LFLAGS += -Wl,--export-all-symbols
 }
 mac {
 	QMAKE_SONAME_PREFIX += @rpath
