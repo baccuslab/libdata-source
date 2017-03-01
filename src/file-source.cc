@@ -135,15 +135,16 @@ void FileSource::readDataFromFile()
 {
 	datasource::Samples s;
 	if (m_currentSample >= static_cast<decltype(m_currentSample)>(m_datafile->nsamples())) {
-		/* Wrap data around to the beginning of the file. */
+		/* Wrap data around to the beginning of the file, and 
+		 * start returning that data as well.
+		 */
 		m_currentSample = 0;
-		m_readTimer->stop();
-		m_state = "initialized";
-		emit streamStopped(true, "Reached end of source data file.");
-		return;
 	}
-	m_datafile->data(0, m_nchannels, m_currentSample, m_currentSample + m_frameSize, s);
-	m_currentSample += m_frameSize;
+	auto endSample = std::min(
+			static_cast<decltype(m_currentSample)>(m_datafile->nsamples()),
+			m_currentSample + m_frameSize);
+	m_datafile->data(0, m_nchannels, m_currentSample, endSample, s);
+	m_currentSample += endSample - m_currentSample;
 	emit dataAvailable(s);
 }
 
