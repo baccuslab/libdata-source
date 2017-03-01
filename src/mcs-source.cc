@@ -657,6 +657,9 @@ int32 McsSource::finalizeTaskStartup()
 
 void McsSource::readDeviceBuffer()
 {
+	if (!m_inputTask)
+		return;
+
 	int32 nread = 0;
 	int32 status = DAQmxReadBinaryI16(m_inputTask, m_acquisitionBlockSize,
 			m_triggerTimeout, m_deviceFillMode, m_acqBuffer.memptr(),
