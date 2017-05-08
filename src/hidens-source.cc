@@ -366,7 +366,7 @@ void HidensSource::recvDataFrame()
 					x = ( x & 0x08 ) ? 255 : 0; // set elements with 4th bit a 1 to 255
 				});
 		emit dataAvailable(arma::conv_to<datasource::Samples>::from(
-				m_acqBuffer.rows(m_channelIndices).t() * static_cast<qint16>(-1)));
+				m_acqBuffer.rows(m_channelIndices).t()) * static_cast<qint16>(-1));
 	};
 }
 
