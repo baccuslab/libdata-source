@@ -19,23 +19,29 @@ HidensSource::HidensSource(const QString& addr, int readInterval, QObject *paren
 	m_port(HidensPort),
 	m_electrodeIndices(m_hidensFrameSize)
 {
+	/* -1 corresponds to invalid channels. */
 	m_electrodeIndices.fill(-1);
-	m_electrodeIndices(m_hidensFrameSize - 1) = 1; // photodiode channel
+
+	/* The photodiode channel (last) is always valid. */
+	m_electrodeIndices(m_hidensFrameSize - 1) = 1;
+
+	/* Set sizes of acquisition and emission buffers.
+	 * NOTE: Data is transposed between receipt and emission,
+	 * as well as converted from uint8_t to int16_t.
+	 */
+	m_nchannels = m_nTotalChannels;
 	m_acqBuffer.set_size(m_hidensFrameSize, 
 			static_cast<int>(m_sampleRate * 
 			static_cast<float>(m_readInterval) / 1000.));
-	m_sourceLocation = addr;
+	m_emitBuffer.set_size(static_cast<int>(m_sampleRate *
+			static_cast<float>(m_readInterval) / 1000.),
+			m_nchannels);
 
+	/* Setup source location and socket for connecting to ThreadedServer. */
+	m_sourceLocation = addr;
 	m_socket = new QTcpSocket(this);
 
-	m_readTimer = new QTimer(this);
-	m_readTimer->setInterval(m_readInterval);
-	QObject::connect(m_readTimer, &QTimer::timeout, 
-			this, [&]() {
-				recvDataFrame();
-				requestData("stream");
-		});
-
+	/* Add valid gettable/settable parameters for a HiDens data source. */
 	m_gettableParameters.insert("configuration");
 	m_settableParameters.insert("configuration");
 	m_gettableParameters.insert("configuration-file");
@@ -87,8 +93,12 @@ void HidensSource::startStream()
 			return;
 		}
 		m_state = "streaming";
+
+		/* Connect function for reading data and request first chunk. */
+		QObject::connect(m_socket, &QTcpSocket::readyRead,
+				this, &HidensSource::recvDataFrame);
 		requestData("live");
-		m_readTimer->start();
+
 		valid = true;
 	} else {
 		msg = "Can only start stream from the 'connected' state.";
@@ -103,7 +113,20 @@ void HidensSource::stopStream()
 	QString msg;
 	if (m_state == "streaming") {
 		m_state = "initialized";
-		m_readTimer->stop(); // should probably flush remaining data
+
+		/* Disconnect function for reading data. */
+		QObject::disconnect(m_socket, &QTcpSocket::readyRead,
+				this, &HidensSource::recvDataFrame);
+	
+		/* Flush remaning data.
+		 *
+		 * After the read interval, call the functor below, flushing
+		 * the socket.
+		 */
+		QTimer::singleShot(m_readInterval, [this]() -> void {
+				m_socket->readAll();
+			});
+
 		valid = true;
 	} else {
 		msg = "Can only stop stream from the 'streaming' state.";
@@ -208,7 +231,6 @@ void HidensSource::handleConnectionMade(bool made)
 		askHidens("setbytes " + QByteArray::number(m_hidensFrameSize));
 		if (!verifyReply(getHidensReply())) {
 			m_socket->disconnectFromHost();
-			qDebug() << "Could not setbytes with HiDens server.";
 			emit initialized(false, "Error initializing communication with HiDens data server.");
 			return;
 		}
@@ -216,7 +238,6 @@ void HidensSource::handleConnectionMade(bool made)
 		askHidens("header_frameno off");
 		if (!verifyReply(getHidensReply())) {
 			m_socket->disconnectFromHost();
-			qDebug() << "Could not set header_frameno off with HiDens server.";
 			emit initialized(false, "Error initializing communication with HiDens data server.");
 			return;
 		}
@@ -224,7 +245,6 @@ void HidensSource::handleConnectionMade(bool made)
 		askHidens("client_name blds");
 		if (!verifyReply(getHidensReply())) {
 			m_socket->disconnectFromHost();
-			qDebug() << "Could not set client name with HiDens server.";
 			emit initialized(false, "Error initializing communication with HiDens data server.");
 			return;
 		}
@@ -237,7 +257,6 @@ void HidensSource::handleConnectionMade(bool made)
 			m_socket->disconnectFromHost();
 			QString msg { "Could not retrieve sampling rate from HiDens server. "
 					"Make sure the server is running and a chip is plugged into the Neurolizer." };
-			qDebug().noquote() << msg;
 			emit initialized(false, msg);
 			return;
 		}
@@ -249,7 +268,6 @@ void HidensSource::handleConnectionMade(bool made)
 			m_socket->disconnectFromHost();
 			QString msg { "Could not retrieve gain from HiDens server. "
 					"Make sure the server is running and a chip is plugged into the Neurolizer." };
-			qDebug().noquote() << msg;
 			emit initialized(false, msg);
 			return;
 		}
@@ -262,7 +280,6 @@ void HidensSource::handleConnectionMade(bool made)
 			m_socket->disconnectFromHost();
 			QString msg { "Could not retrieve ADC range from HiDens server. "
 					"Make sure the server is running and a chip is plugged into the Neurolizer." };
-			qDebug().noquote() << msg;
 			emit initialized(false, msg);
 			return;
 		}
@@ -334,13 +351,18 @@ void HidensSource::recvDataFrame()
 		return;
 	}
 
-	/* Read all avaialable frames */
+	/* Read all avaialable frames.
+	 *
+	 * This should only be run once, as we only request another frame
+	 * after reading a full one from the HiDens server.
+	 */
 	while (m_socket->bytesAvailable() >= m_bytesPerEmitFrame) {
 
 		/* Read until a full frame has been received. */
 		qint64 nread = 0, ret = 0;
 		do {
-			ret = m_socket->read(reinterpret_cast<char*>(m_acqBuffer.memptr()) + nread,
+			ret = m_socket->read(
+					reinterpret_cast<char*>(m_acqBuffer.memptr()) + nread,
 					m_bytesPerEmitFrame - nread);
 			if (ret == -1) {
 				emit error("Error reading data from HiDens server!");
@@ -351,12 +373,14 @@ void HidensSource::recvDataFrame()
 
 		/* Convert photodiode signal.
 		 *
-		 * The photodiode is carried across a couple of distributed channels. The bits we
-		 * care about are the 4th bit in the last byte. Note that this is entirely dependent
-		 * on which pin on the LVDS adapter the output from the Arduino is connected to.
-		 * This code assumes that the digital output is connected to the 4th pin from the
-		 * top on the left. If it moves, see the below URL to get the new value for the
-		 * bit-twiddling.
+		 * The digital signals from the small LVDS adapter board are grouped
+		 * into a couple of data channels. The photodiode bit is the 4th bit
+		 * of the last byte in the data frame received from the server. Note
+		 * that this is entirely dependent on which pin on the LVDS adapter
+		 * board the output from the Arduino is connected to. This code
+		 * assumes that the digital output is connected to the 4th pin from the
+		 * top on the left. If that output moves, see the below URL to get the
+		 * new value for the bit-twiddling.
 		 *
 		 * See https://wiki-bsse.ethz.ch/display/DBSSECMOSMEA/HiDens+Neurolizer+LVDS+Adapter
 		 * for more information.
@@ -365,9 +389,27 @@ void HidensSource::recvDataFrame()
 				[](uchar& x) { 
 					x = ( x & 0x08 ) ? 255 : 0; // set elements with 4th bit a 1 to 255
 				});
-		emit dataAvailable(arma::conv_to<datasource::Samples>::from(
-				m_acqBuffer.rows(m_channelIndices).t()) * static_cast<qint16>(-1));
-	};
+
+		/* 
+		 * Transfer all channel data into emit buffer.
+		 *
+		 * Channels 0-125 are the data channels (some of which may be invalid).
+		 * Channel 130 contains the photodiode signal.
+		 */
+		const auto flip = static_cast<qint16>(-1);
+		m_emitBuffer.cols(0, m_nDataChannels - 1) = 
+				arma::conv_to<datasource::Samples>::from(
+				m_acqBuffer.rows(0, m_nDataChannels - 1).t()) * flip;
+		m_emitBuffer.col(m_nchannels - 1) = 
+				arma::conv_to<datasource::Samples>::from(
+				m_acqBuffer.row(m_hidensFrameSize - 1).t()) * flip;
+
+		/* Emit new data frame. */
+		emit dataAvailable(m_emitBuffer);
+	}
+
+	/* Request next chunk of data. */
+	requestData("stream");
 }
 
 void HidensSource::getConfigurationFromServer()
@@ -390,18 +432,14 @@ void HidensSource::getConfigurationFromServer()
 	std::for_each(channelStringList.begin(), channelStringList.end(), stripFunction);
 	m_electrodeIndices.fill(-1);
 	m_electrodeIndices(m_hidensFrameSize - 1) = 1;
-	m_nchannels = 0;
 	int n = 0;
 	for (auto& each : channelStringList) {
 		if (each.size()) {
+			/* Convert valid channels to int's. Invalids are left at -1. */
 			m_electrodeIndices(n) = each.toInt();
-			m_nchannels += 1; // Counts connected channels
 		}
-		n += 1;	// Counts possible channels
+		n += 1;
 	}
-
-	/* Convert from channel number to data buffer column index, keeping photodiode */
-	m_channelIndices = arma::find(m_electrodeIndices > 0);
 
 	/* 
 	 * Read the electrode positions from the resource file, rather than parsing
@@ -423,24 +461,32 @@ void HidensSource::getConfigurationFromServer()
 	m_configuration.clear();
 	m_configuration.reserve(m_nchannels);
 	QRegularExpression re("\\s|[xyp]");
-	for (int i = 0; i < m_ntotalChannels; i++) {
-		if (m_electrodeIndices(i) == -1) {
-			continue; // Skip unconnected channels
-		}
-		Electrode el;
-		el.index = m_electrodeIndices(i);
+	for (int i = 0; i < m_nTotalChannels; i++) {
+		Electrode el { };
+		/*
+		 * Channels not connected to an electrode are given an
+		 * empty (all zeros) electrode.
+		 */
 
-		auto positionList = electrodeList.at(m_electrodeIndices(i)).split(re);
-		el.xpos = positionList[0].toInt();
-		el.ypos = positionList[1].toInt();
-		el.x = positionList[3].toInt();
-		el.y = positionList[4].toInt();
-		el.label = positionList[5][0].toLatin1();
+		/*
+		 * Channels with a valid electrode number are given an
+		 * electrode with x/y positions read from the corresponding
+		 * line of the electrodeList.
+		 */
+		if (m_electrodeIndices(i) >= 0) {
+			el.index = m_electrodeIndices(i);
+
+			auto positionList = electrodeList.at(m_electrodeIndices(i)).split(re);
+			el.xpos = positionList[0].toInt();
+			el.ypos = positionList[1].toInt();
+			el.x = positionList[3].toInt();
+			el.y = positionList[4].toInt();
+			el.label = positionList[5][0].toLatin1();
+		}
+
+		/* Push electrode to configuration. */
 		m_configuration << el;
 	}
-
-	/* Add 1 channel for photodiode. */
-	m_nchannels += 1;
 }
 
 QPair<bool, QString> HidensSource::sendConfigToFpga(

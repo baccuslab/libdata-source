@@ -27,7 +27,7 @@ namespace datasource {
  * that the server program with which this class communicates is over the
  * network, writing a non-blocking implementation of this isn't trivial
  * because of a lot of variability in the replies from that server. So 
- * this class imposes a blocing request/reply pattern on the communication
+ * this class imposes a blocking request/reply pattern on the communication
  * protocol. So this BaseSource subclass *really should* be in a background
  * thread.
  */
@@ -172,7 +172,10 @@ class LIBDATA_SOURCE_VISIBILITY HidensSource : public BaseSource {
 		/* Number of total data channels in the HiDens system.
 		 * This is the actual number of possible valid channels containing data.
 		 */
-		const int m_ntotalChannels { 126 };
+		const int m_nDataChannels { 126 };
+
+		/* Number of total channels in the emitted data stream. */
+		const int m_nTotalChannels { m_nDataChannels + 1 };
 		
 		/* Number of bytes in each frame of data as received from the HiDens
 		 * system. This is per frame, i.e., a segment containing one sample
@@ -191,21 +194,22 @@ class LIBDATA_SOURCE_VISIBILITY HidensSource : public BaseSource {
 		/* Buffer into which raw data from the HiDens device is placed. */
 		arma::Mat<uchar> m_acqBuffer;
 
+		/* Buffer into which the valid data from each frame is placed.
+		 *
+		 * "Valid" data means that from the first 126 channels (0-125) and
+		 * the transformed photodiode value. This last is placed into channel
+		 * 127 of this array, and is derived from one bit in channel 131 of
+		 * the m_acqBuffer array.
+		 */
+		datasource::Samples m_emitBuffer;
+
 		/* Indices of connected electrodes (-1 if not connected). */
 		arma::Col<int> m_electrodeIndices;
-
-		/* Array used to index into actual acquisition buffer to retrieve
-		 * valid data for emission.
-		 */
-		arma::uvec m_channelIndices;
 
 		/* Gain of the ADC converters on board the chip. This is the output
 		 * of the "gain 0" command.
 		 */
 		float m_deviceGain;
-
-		/* Timer used to request new data and read it from the server */
-		QTimer* m_readTimer;
 };
 
 }; // end datasource namespace 
