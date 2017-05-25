@@ -17,7 +17,7 @@ linux {
 MOC_DIR = build
 OBJECTS_DIR = build
 DESTDIR = lib
-VERSION = 0.0.1
+VERSION = 0.1.0
 
 QT += core network concurrent
 QT -= gui widgets
